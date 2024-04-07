@@ -84,8 +84,10 @@ char* generateRandom()
 		{
 			fresult=f1/f2;
 		}
-		
-		return ("%s %8.8g %8.8g = %8.8g\n",ptr,f1,f2,fresult);
+
+		char *operation = malloc(100); // Adjust buffer size accordingly
+        snprintf(operation, 100, "%s %d %d = %d \n", ptr, i1, i2, iresult);
+        return operation;
 	} 
 	else
 	{
@@ -104,7 +106,9 @@ char* generateRandom()
 			iresult=i1/i2;
 		}
 
-		return ("%s %d %d = %d \n",ptr,i1,i2,iresult);
+		char *operation = malloc(100); // Adjust buffer size accordingly
+		snprintf("%s %d %d = %d \n",ptr,i1,i2,iresult);
+		return operation;
 	}
 }
 
@@ -239,6 +243,7 @@ int main(int argc, char *argv[]) {
 
         // Generate random number
         char* operation = generateRandom()
+		printf(operation)
 
         // Send operation to client
         if (send(new_fd, operation.c_str(), operation.length(), 0) == -1) 
