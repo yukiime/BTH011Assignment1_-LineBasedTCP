@@ -276,23 +276,18 @@ int main(int argc, char *argv[])
             FD_SET(cfd, &redset);
             // 更新最大值
             maxfd = cfd > maxfd ? cfd : maxfd;
+            printf("maxfd:%d \n",maxfd);
         }
 
         for(int i=0;i<maxfd;++i)
         {
-            int len = read(i, buf, sizeof(buf));
-            if(len == 0)
-            {
-                printf("client closed the connection\n");
-                // 将检测的文件描述符从读集合中删除
-                FD_CLR(i, &redset);
-                close(i);
-            }
-            else if(len > 0)
-            {
+            printf("i: %d \n",i);
+
+                printf("sockdf: %d,i2: %d \n",sockfd,i);
 
                 if(i!=sockfd && FD_ISSET(i, &tmp))
                 {
+                    printf("i3:%d \n",i);
                     // Send supported protocol to client
                     std::string protocolMessage = "TEXT TCP 1.0\n";
                     if (send(i, protocolMessage.c_str(), protocolMessage.length(), 0) == -1) 
@@ -400,18 +395,14 @@ int main(int argc, char *argv[])
                             printf("server: ERROR\n");
                             
                         }
-                        
+                        close(i);
+                        break;
                     }
-
-                    close(i);
-                    break;
+                    
+        
                 }
-            }
-            else
-            {
-                perror("read");
-            }
         }
+
     }
 //-----------------------------
 
