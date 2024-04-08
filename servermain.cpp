@@ -256,6 +256,7 @@ int main(int argc, char *argv[])
     FD_ZERO(&redset);
     FD_SET(sockfd, &redset);
     int maxfd = sockfd;
+    int num = 0;
 
     while(1)
     {
@@ -264,145 +265,178 @@ int main(int argc, char *argv[])
         // 判断是否listen
         if(FD_ISSET(sockfd,&tmp))
         {
-            // client connection
-            struct sockaddr_storage their_addr; // connector's address information
-	        socklen_t sin_size;
-            int cfd = accept(sockfd,(struct sockaddr *)&their_addr, &sin_size);
             
-            char s[INET6_ADDRSTRLEN];
-            inet_ntop(their_addr.ss_family, get_in_addr((struct sockaddr *)&their_addr), s, sizeof s);
-            printf("server: got connection from %s\n", s);
+            if(num<MAXCLIENTS)
+            {
+                // client connection
+                struct sockaddr_storage their_addr; // connector's address information
+                socklen_t sin_size;
+                int cfd = accept(sockfd,(struct sockaddr *)&their_addr, &sin_size);
+                
+                num++;
 
-            FD_SET(cfd, &redset);
-            // 更新最大值
-            maxfd = cfd > maxfd ? cfd : maxfd;
-            printf("maxfd:%d \n",maxfd);
+                char s[INET6_ADDRSTRLEN];
+                inet_ntop(their_addr.ss_family, get_in_addr((struct sockaddr *)&their_addr), s, sizeof s);
+                printf("server: got connection from %s\n", s);
+
+                FD_SET(cfd, &redset);
+                // 更新最大值
+                maxfd = cfd > maxfd ? cfd : maxfd;
+                // printf("maxfd:%d \n",maxfd);
+                
+                // printf("sockdf: %d,cfd: %d \n",sockfd,cfd);
+                // Send supported protocol to client
+                std::string protocolMessage = "TEXT TCP 1.0\n";
+                // if (write(i, protocolMessage.c_str(), protocolMessage.length()) == -1) 
+                if (send(cfd, protocolMessage.c_str(), protocolMessage.length(), 0) == -1) 
+                {
+                    perror("send");
+                    close(cfd);
+                    continue;
+                }
+            }
+            else
+            {
+                // client connection
+                struct sockaddr_storage their_addr; // connector's address information
+                socklen_t sin_size;
+                int cfd = accept(sockfd,(struct sockaddr *)&their_addr, &sin_size);
+
+                std::string protocolMessage = "Reject, out of queue\n";
+                if (send(cfd, protocolMessage.c_str(), protocolMessage.length(), 0) == -1) 
+                {
+                    perror("send");
+                    close(cfd);
+                    continue;
+                }
+
+                close(cfd);
+            }
         }
 
-        for(int i=0;i<maxfd;++i)
+        for(int i=0;i<=maxfd;++i)
         {
-            printf("i: %d \n",i);
+            if(i!=sockfd && FD_ISSET(i, &tmp))
+            {
+                // printf("i3:%d \n",i);
 
-                printf("sockdf: %d,i2: %d \n",sockfd,i);
-
-                if(i!=sockfd && FD_ISSET(i, &tmp))
+                // Receive response from client
+                char buf[5]={0};
+                int len = recv(i, buf, sizeof(buf), 0);
+                if (len == -1) 
                 {
-                    printf("i3:%d \n",i);
-                    // Send supported protocol to client
-                    std::string protocolMessage = "TEXT TCP 1.0\n";
-                    if (send(i, protocolMessage.c_str(), protocolMessage.length(), 0) == -1) 
+                    perror("recv");
+                    close(i);
+                    continue;
+                    num--;
+                }
+                else if(len == 0)
+                {
+                    printf("client closed connection...\n");
+                    FD_CLR(i, &redset);
+                    close(i);
+                    num--;
+                }
+
+                char buf_pre3[4];
+                for (int i = 0; i < 3; ++i) 
+                {
+                    buf_pre3[i] = buf[i];
+                }
+                buf_pre3[3] = '\0'; // end
+                
+                // Check if client accepted the protocol
+                if (strcmp(buf_pre3, "OK\n") != 0) 
+                {
+                    printf("Client can not accept this protocol.\nDisconnecting.\n");
+                    close(i);
+                    continue;
+                }
+                
+                // 清空缓存区,理论上没有用
+                memset(buf, 0, sizeof(buf));
+
+                
+                while(1)
+                {
+                    // Initialize the library, this is needed for this library. 
+                    char *ptr;
+                    ptr=randomType(); // Get a random arithemtic operator. 
+                    double f1,f2;
+                    int i1,i2;
+                    i1=randomInt();
+                    i2=randomInt();
+                    f1=randomFloat();
+                    f2=randomFloat();
+
+                    // Generate random number
+                    char* operation = generateRandom(ptr,f1,f2,i1,i2);
+                    if (operation == NULL) 
+                    {
+                        return -1;
+                    }
+                    char *formula = strtok(operation, "=");
+                    char *result = strtok(NULL, "=");
+                    char *result_copy = strdup(result);
+                    if (result_copy == NULL) 
+                    {
+                        return -1;
+                    }
+
+                    // Send formula to client
+                    int tmpLength = strlen(formula);
+                    formula[tmpLength] = '\n';
+                    formula[tmpLength + 1] = '\0'; // 添加 null 终止符
+                    if (send(i, formula, strlen(formula), 0) == -1) 
                     {
                         perror("send");
                         close(i);
                         continue;
                     }
+                    printf("server: send %s",formula);
 
-                    // Receive response from client
-                    char buf[5];
-                    if (recv(i, buf, sizeof(buf), 0) == -1) 
+                    bool checkflag = NULL;     
+                    char respondResultString[1024];
+                    memset(respondResultString, 0, sizeof(respondResultString));
+                    if (recv(i, respondResultString, sizeof(respondResultString), 0) == -1) 
                     {
                         perror("recv");
                         close(i);
                         continue;
                     }
+                    printf("server: receive respond: %s",respondResultString);
+                    printf("server: correct result:%s",result_copy);
 
-                    char buf_pre3[4];
-                    for (int i = 0; i < 3; ++i) 
+                    if(ptr[0]=='f')
                     {
-                        buf_pre3[i] = buf[i];
-                    }
-                    buf_pre3[3] = '\0'; // end
-                    
-                    // Check if client accepted the protocol
-                    if (strcmp(buf_pre3, "OK\n") != 0) 
+                        checkflag = checkDoubleRandom(respondResultString,result_copy);
+                        
+                    } 
+                    else
                     {
-                        printf("Client can not accept this protocol.\nDisconnecting.\n");
-                        close(i);
-                        continue;
+                        checkflag = checkIntRandom(respondResultString,result_copy);
                     }
-                    // 清空缓存区,理论上没有用
-                    memset(buf, 0, sizeof(buf));
 
-                    while(1)
+                    free(result_copy);    
+
+                    if(checkflag)
                     {
-                        /* Initialize the library, this is needed for this library. */
-                        initCalcLib();
-                        char *ptr;
-                        ptr=randomType(); // Get a random arithemtic operator. 
-                        double f1,f2;
-                        int i1,i2;
-                        i1=randomInt();
-                        i2=randomInt();
-                        f1=randomFloat();
-                        f2=randomFloat();
-
-                        // Generate random number
-                        char* operation = generateRandom(ptr,f1,f2,i1,i2);
-                        if (operation == NULL) 
-                        {
-                            return -1;
-                        }
-                        char *formula = strtok(operation, "=");
-                        char *result = strtok(NULL, "=");
-                        char *result_copy = strdup(result);
-                        if (result_copy == NULL) 
-                        {
-                            return -1;
-                        }
-
-                        // Send formula to client
-                        int tmpLength = strlen(formula);
-                        formula[tmpLength] = '\n';
-                        formula[tmpLength + 1] = '\0'; // 添加 null 终止符
-                        if (send(i, formula, strlen(formula), 0) == -1) 
-                        {
-                            perror("send");
-                            close(i);
-                            continue;
-                        }
-                        printf("server: send %s",formula);
-
-                        bool checkflag = NULL;     
-                        char respondResultString[1024];
-                        memset(respondResultString, 0, sizeof(respondResultString));
-                        if (recv(i, respondResultString, sizeof(respondResultString), 0) == -1) 
-                        {
-                            perror("recv");
-                            close(i);
-                            continue;
-                        }
-                        printf("server: receive respond: %s",respondResultString);
-                        printf("server: correct result:%s",result_copy);
-
-                        if(ptr[0]=='f')
-                        {
-                            checkflag = checkDoubleRandom(respondResultString,result_copy);
-                            
-                        } 
-                        else
-                        {
-                            checkflag = checkIntRandom(respondResultString,result_copy);
-                        }
-
-                        free(result_copy);    
-
-                        if(checkflag)
-                        {
-                            printf("server: OK\n");
-                        }
-                        else
-                        {
-                            printf("server: ERROR\n");
-                            
-                        }
-                        close(i);
-                        break;
+                        printf("server: OK\n");
                     }
-                    
-        
+                    else
+                    {
+                        printf("server: ERROR\n");
+                        
+                    }
+
+                    // 顺手关掉
+                    close(i);
+                    num--;
+                    break;
                 }
+    
+            }
         }
-
     }
 //-----------------------------
 
