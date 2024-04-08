@@ -18,7 +18,8 @@
 #include "calcLib.h"
 
 #define BACKLOG 5   // how many pending connections queue will hold
-#define SECRETSTRING "gimboid"
+#define MAXCLIENTS 5
+#define SECRETSTRING "konijiwa00"
 #define DEBUG
 
 using namespace std;
@@ -244,19 +245,41 @@ int main(int argc, char *argv[])
 
     if (listen(sockfd, BACKLOG) == -1) 
 	{
-        perror("reject the sixth client");  
+        perror("listen");  
         exit(1);
     }
 
     printf("server: waiting for connections...\n");
 
-    // 记得删
-    // char msg[1500];
-	// int MAXSZ=sizeof(msg)-1;
-	// int childCnt=0;
-	// int readSize;
-	// char command[10];
-	// char optionstring[128];
+//-----------------------------
+    fd_set redset;
+    FD_ZERD(&redset);
+    FD_SET(sockfd, &redset);
+    int maxfd = sockfd;
+
+    while(1)
+    {
+        fd_set tmp = redset;
+        int ret = select(maxfd+1,&tmp,NULL,NULL,NULL);
+        // 判断是否listen
+        if(FD_ISSET(scokfd,&tmp))
+        {
+            // client connection
+            int cfd = accept(shockfd,NULL,NULL);
+            FD_SET(cfd, &redset);
+            // 更新最大值
+            maxfd = cfd > maxfd ? cfd : maxfd;
+        }
+
+        for(int i=0;i<maxfd;++i)
+        {
+            if(i!=sockfd && FD_ISSET(i, &temp))
+            {
+
+            }
+        }
+    }
+//-----------------------------
 
     int new_fd;  // listen on sock_fd, new connection on new_fd
     struct sockaddr_storage their_addr; // connector's address information
@@ -375,8 +398,6 @@ int main(int argc, char *argv[])
             }
             printf("server: send %s",formula);
 
-
-
             bool checkflag = NULL;     
             char respondResultString[1024];
             memset(respondResultString, 0, sizeof(respondResultString));
@@ -386,7 +407,8 @@ int main(int argc, char *argv[])
                 close(new_fd);
                 continue;
             }
-            printf("server: receive respond result: %s",respondResultString);
+            printf("server: receive respond: %s",respondResultString);
+
             printf("server: correct result:%s",result_copy);
 #ifdef DEBUG  
     // printf("result str2: %s",result_copy);
@@ -402,38 +424,6 @@ int main(int argc, char *argv[])
             }
 
             free(result_copy);    
-            
-            // if(ptr[0]=='f')
-            // {
-            //     // Receive response from client
-            //     double respondResult;
-            //     if (recv(new_fd, &respondResult, sizeof(double), 0) == -1) 
-            //     {
-            //         perror("recv");
-            //         close(new_fd);
-            //         continue;
-            //     }
-
-            //     //printf("buf:%send;\n",buf);
-            //     printf("DOUBLE re:%fend;\n",respondResult);
-            //     //checkDoubleRandom(respondResult,ptr,f1,f2,i1,i2);
-                
-            // } 
-            // else
-            // {
-            //     // Receive response from client
-            //     int respondResult;
-            //     if (recv(new_fd, &respondResult, sizeof(int), 0) == -1) 
-            //     {
-            //         perror("recv");
-            //         close(new_fd);
-            //         continue;
-            //     }
-            //     //printf("buf:%send;\n",buf);
-            //     // int respondResult = std::atoi(buf);
-            //     printf("INT re:%dend;\n",respondResult);
-            //     //checkIntRandom(respondResult,ptr,f1,f2,i1,i2);
-            // }
 
             if(checkflag)
             {
@@ -444,14 +434,13 @@ int main(int argc, char *argv[])
                 printf("server: ERROR\n");
                 
             }
-
             
         }
 
-
-
         close(new_fd);
     }
+
+    close(sockfd);
 
     return 0;
 }
