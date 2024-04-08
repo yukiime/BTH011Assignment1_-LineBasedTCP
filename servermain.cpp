@@ -13,7 +13,7 @@
 #include <string>
 #include <time.h>
 #include <sys/time.h> 
-#include <chrono>
+
 
 // Additional include for calcLib
 #include "calcLib.h"
@@ -275,7 +275,6 @@ int main(int argc, char *argv[])
         // 判断是否listen
         if(FD_ISSET(sockfd,&tmp))
         {
-            
             if(num<MAXCLIENTS)
             {
                 // client connection
@@ -369,6 +368,21 @@ int main(int argc, char *argv[])
                 
                 while(1)
                 {
+                    // // recv timeout
+                    // int nNetTimeout=5000;// 5 sec
+                    // setsockopt(i,SOL_SOCKET,SO_RCVTIMEO,(char *)&nNetTimeout,sizeof(int));
+                    struct timeval timeout;
+                    timeout.tv_sec = 5;
+                    timeout.tv_usec = 0;
+                    if (setsockopt(i, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout)) < 0) 
+                    {
+                        perror("setsockopt");
+                        close(i);
+                        continue;
+                    }
+
+
+
                     // Initialize the library, this is needed for this library. 
                     char *ptr;
                     ptr=randomType(); // Get a random arithemtic operator. 
@@ -405,18 +419,50 @@ int main(int argc, char *argv[])
                     }
                     printf("server: send %s",formula);
 
-                    bool checkflag = NULL;     
+                    // int ready = select(i + 1, &tmp, NULL, NULL, &timeout);
+                    // if (ready == 0) 
+                    // {
+                    //     printf("server: receive timeout. Closing connection.\n");
+                    //     close(i);
+                    //     continue;
+                    // }
+
                     char respondResultString[1024];
-                    memset(respondResultString, 0, sizeof(respondResultString));
-                    if (recv(i, respondResultString, sizeof(respondResultString), 0) == -1) 
+                    // memset(respondResultString, 0, sizeof(respondResultString));
+                    // if (recv(i, respondResultString, sizeof(respondResultString), 0) == -1) 
+                    // {
+                    //     perror("recv");
+                    //     close(i);
+                    //     continue;
+                    // }
+
+                    int bytesReceived = recv(i, respondResultString, sizeof(respondResultString) - 1, 0);
+                    if (bytesReceived == -1) 
                     {
-                        perror("recv");
+                        if (errno == EWOULDBLOCK || errno == EAGAIN) 
+                        {
+                            // Timeout occurred
+                            printf("server: timeout occurred, closing connection\n");
+                            break;
+                        } 
+                        else 
+                        {
+                            perror("recv");
+                        }
+                        close(i);
+                        continue;
+                    } 
+                    else if (bytesReceived == 0) 
+                    {
+                        // Connection closed by the client
                         close(i);
                         continue;
                     }
+
                     printf("server: receive respond: %s",respondResultString);
                     printf("server: correct result:%s",result_copy);
 
+                    bool checkflag = NULL;     
                     if(ptr[0]=='f')
                     {
                         checkflag = checkDoubleRandom(respondResultString,result_copy);
