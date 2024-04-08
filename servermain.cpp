@@ -102,29 +102,19 @@ char* generateRandom(char* ptr,double f1,double f2,int i1,int i2)
 	}
 }
 
-bool checkDoubleRandom(double result,char* ptr,double f1,double f2,int i1,int i2)
-{
-    double fresult;
-	
-    if(strcmp(ptr,"fadd")==0)
-    {
-        fresult=f1+f2;
-    } 
-    else if (strcmp(ptr, "fsub")==0)
-    {
-        fresult=f1-f2;
-    } 
-    else if (strcmp(ptr, "fmul")==0)
-    {
-        fresult=f1*f2;
-    } 
-    else if (strcmp(ptr, "fdiv")==0)
-    {
-        fresult=f1/f2;
-    }
-
-    double difference = abs(result-fresult);
-
+bool checkDoubleRandom(char* respondResultString,char* fresult_str)
+{   
+    double respondResult;
+    sscanf(respondResultString, "%lg", &respondResult);
+    double real_fresult;
+    sscanf(fresult_str, " %lg", &real_fresult);
+    
+#ifdef DEBUG  
+    // printf("DOUBLE re:%fend;\n",respondResult);
+    // printf("correct fresult_str: %s\n",fresult_str);
+    // printf("server: correct result: %8.8g\n",real_fresult);
+#endif
+    double difference = abs(respondResult-real_fresult);
     if(difference < 0.0001)
     {
         return true;
@@ -135,26 +125,19 @@ bool checkDoubleRandom(double result,char* ptr,double f1,double f2,int i1,int i2
     }
 }
 
-bool checkIntRandom(int result,char* ptr,double f1,double f2,int i1,int i2)
+bool checkIntRandom(char* respondResultString,char* iresult_str)
 {
-    int iresult;
+    int respondResult;
+    sscanf(respondResultString, "%d", &respondResult);
+    int real_iresult;
+    sscanf(iresult_str, " %d", &real_iresult);
 
-    if(strcmp(ptr,"add")==0)
-    {
-        iresult=i1+i2;
-    } 
-    else if (strcmp(ptr, "sub")==0)
-    {
-        iresult=i1-i2;
-    } else if (strcmp(ptr, "mul")==0)
-    {
-        iresult=i1*i2;
-    } else if (strcmp(ptr, "div")==0)
-    {
-        iresult=i1/i2;
-    }
-
-    int difference = abs(result-iresult);
+#ifdef DEBUG  
+    // printf("INT re:%dend;\n",respondResult);
+    // printf("correct iresult_str: %s\n",iresult_str);
+    // printf("server: correct result: %d\n",real_iresult);
+#endif
+    int difference = abs(respondResult-real_iresult);
     if(difference < 0.0001)
     {
         return true;
@@ -344,6 +327,8 @@ int main(int argc, char *argv[])
             close(new_fd);
             continue;
         }
+        // 清空缓存区,理论上没有用
+        memset(buf, 0, sizeof(buf));
 
         while(1)
         {
@@ -361,13 +346,22 @@ int main(int argc, char *argv[])
 
             // Generate random number
             char* operation = generateRandom(ptr,f1,f2,i1,i2);
+            if (operation == NULL) 
+            {
+                return -1;
+            }
             char *formula = strtok(operation, "=");
             char *result = strtok(NULL, "=");
+            char *result_copy = strdup(result);
+            if (result_copy == NULL) {
+                return -1;
+            }
 
 #ifdef DEBUG  
-    //printf(operation);
-    //printf(formula);
-    //printf(result);
+    // printf(operation);
+    // printf(formula);
+    // printf("result str1: %s",result);
+    // printf("result str1: %s",result_copy);
 #endif
             // Send formula to client
             int tmpLength = strlen(formula);
@@ -381,41 +375,77 @@ int main(int argc, char *argv[])
             }
             printf("server: send %s",formula);
 
-                        
+
+
+            bool checkflag = NULL;     
+            char respondResultString[1024];
+            memset(respondResultString, 0, sizeof(respondResultString));
+            if (recv(new_fd, respondResultString, sizeof(respondResultString), 0) == -1) 
+            {
+                perror("recv");
+                close(new_fd);
+                continue;
+            }
+            printf("server: receive respond result: %s",respondResultString);
+            printf("server: correct result:%s",result_copy);
+#ifdef DEBUG  
+    // printf("result str2: %s",result_copy);
+#endif
             if(ptr[0]=='f')
             {
-                // Receive response from client
-                double respondResult;
-                if (recv(new_fd, &respondResult, sizeof(double), 0) == -1) 
-                {
-                    perror("recv");
-                    close(new_fd);
-                    continue;
-                }
-
-                //printf("buf:%send;\n",buf);
-                printf("DOUBLE re:%fend;\n",respondResult);
-                //checkDoubleRandom(respondResult,ptr,f1,f2,i1,i2);
+                checkflag = checkDoubleRandom(respondResultString,result_copy);
                 
             } 
             else
             {
-                // Receive response from client
-                int respondResult;
-                if (recv(new_fd, &respondResult, sizeof(int), 0) == -1) 
-                {
-                    perror("recv");
-                    close(new_fd);
-                    continue;
-                }
-                //printf("buf:%send;\n",buf);
-                // int respondResult = std::atoi(buf);
-                printf("INT re:%dend;\n",respondResult);
-                //checkIntRandom(respondResult,ptr,f1,f2,i1,i2);
+                checkflag = checkIntRandom(respondResultString,result_copy);
             }
 
-            break;
+            free(result_copy);    
+            
+            // if(ptr[0]=='f')
+            // {
+            //     // Receive response from client
+            //     double respondResult;
+            //     if (recv(new_fd, &respondResult, sizeof(double), 0) == -1) 
+            //     {
+            //         perror("recv");
+            //         close(new_fd);
+            //         continue;
+            //     }
 
+            //     //printf("buf:%send;\n",buf);
+            //     printf("DOUBLE re:%fend;\n",respondResult);
+            //     //checkDoubleRandom(respondResult,ptr,f1,f2,i1,i2);
+                
+            // } 
+            // else
+            // {
+            //     // Receive response from client
+            //     int respondResult;
+            //     if (recv(new_fd, &respondResult, sizeof(int), 0) == -1) 
+            //     {
+            //         perror("recv");
+            //         close(new_fd);
+            //         continue;
+            //     }
+            //     //printf("buf:%send;\n",buf);
+            //     // int respondResult = std::atoi(buf);
+            //     printf("INT re:%dend;\n",respondResult);
+            //     //checkIntRandom(respondResult,ptr,f1,f2,i1,i2);
+            // }
+
+            if(checkflag)
+            {
+                printf("server: OK\n");
+            }
+            else
+            {
+                printf("server: ERROR\n");
+                
+            }
+
+            
         }
 
 
