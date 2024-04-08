@@ -262,12 +262,12 @@ int main(int argc, char *argv[])
         fd_set tmp = redset;
         int ret = select(maxfd+1,&tmp,NULL,NULL,NULL);
         // 判断是否listen
-        if(FD_ISSET(scokfd,&tmp))
+        if(FD_ISSET(sockfd,&tmp))
         {
             // client connection
             struct sockaddr_storage their_addr; // connector's address information
 	        socklen_t sin_size;
-            int cfd = accept(shockfd,(struct sockaddr *)&their_addr, &sin_size);
+            int cfd = accept(sockfd,(struct sockaddr *)&their_addr, &sin_size);
             
             char s[INET6_ADDRSTRLEN];
             inet_ntop(their_addr.ss_family, get_in_addr((struct sockaddr *)&their_addr), s, sizeof s);
@@ -280,7 +280,7 @@ int main(int argc, char *argv[])
 
         for(int i=0;i<maxfd;++i)
         {
-            if(i!=sockfd && FD_ISSET(i, &temp))
+            if(i!=sockfd && FD_ISSET(i, &tmp))
             {
                 // Send supported protocol to client
                 std::string protocolMessage = "TEXT TCP 1.0\n";
