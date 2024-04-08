@@ -24,7 +24,7 @@
 
 #define WAIT_TIME_SEC 5
 #define WAIT_TIME_USEC 0
-
+#define MAXRCVTIME 5
 #define DEBUG
 
 
@@ -327,17 +327,34 @@ int main(int argc, char *argv[])
         {
             if(i!=sockfd && FD_ISSET(i, &tmp))
             {
-                // printf("i3:%d \n",i);
+                struct timeval timeout;
+                timeout.tv_sec = MAXRCVTIME;
+                timeout.tv_usec = 0;
+                if (setsockopt(i, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout)) < 0) 
+                {
+                    perror("setsockopt");
+                    close(i);
+                    continue;
+                }
 
                 // Receive response from client
                 char buf[5]={0};
                 int len = recv(i, buf, sizeof(buf), 0);
                 if (len == -1) 
                 {
-                    perror("recv");
+                    if (errno == EWOULDBLOCK || errno == EAGAIN) 
+                    {
+                        // Timeout occurred
+                        printf("server: timeout occurred, closing connection\n");
+                    } 
+                    else 
+                    {
+                        perror("recv");
+                    }
+
                     close(i);
-                    continue;
                     num--;
+                    break;
                 }
                 else if(len == 0)
                 {
@@ -345,7 +362,7 @@ int main(int argc, char *argv[])
                     FD_CLR(i, &redset);
                     close(i);
                     num--;
-                }
+                }          
 
                 char buf_pre3[4];
                 for (int i = 0; i < 3; ++i) 
@@ -371,16 +388,16 @@ int main(int argc, char *argv[])
                     // // recv timeout
                     // int nNetTimeout=5000;// 5 sec
                     // setsockopt(i,SOL_SOCKET,SO_RCVTIMEO,(char *)&nNetTimeout,sizeof(int));
-                    struct timeval timeout;
-                    timeout.tv_sec = 5;
-                    timeout.tv_usec = 0;
-                    if (setsockopt(i, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout)) < 0) 
-                    {
-                        perror("setsockopt");
-                        close(i);
-                        continue;
-                    }
-
+                    
+                    // struct timeval timeout;
+                    // timeout.tv_sec = MAXRCVTIME;
+                    // timeout.tv_usec = 0;
+                    // if (setsockopt(i, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout)) < 0) 
+                    // {
+                    //     perror("setsockopt");
+                    //     close(i);
+                    //     continue;
+                    // }
 
 
                     // Initialize the library, this is needed for this library. 
@@ -419,16 +436,8 @@ int main(int argc, char *argv[])
                     }
                     printf("server: send %s",formula);
 
-                    // int ready = select(i + 1, &tmp, NULL, NULL, &timeout);
-                    // if (ready == 0) 
-                    // {
-                    //     printf("server: receive timeout. Closing connection.\n");
-                    //     close(i);
-                    //     continue;
-                    // }
-
                     char respondResultString[1024];
-                    // memset(respondResultString, 0, sizeof(respondResultString));
+                    memset(respondResultString, 0, sizeof(respondResultString));
                     // if (recv(i, respondResultString, sizeof(respondResultString), 0) == -1) 
                     // {
                     //     perror("recv");
@@ -436,21 +445,21 @@ int main(int argc, char *argv[])
                     //     continue;
                     // }
 
-                    int bytesReceived = recv(i, respondResultString, sizeof(respondResultString) - 1, 0);
+                    int bytesReceived = recv(i, respondResultString, sizeof(respondResultString), 0);
                     if (bytesReceived == -1) 
                     {
                         if (errno == EWOULDBLOCK || errno == EAGAIN) 
                         {
                             // Timeout occurred
                             printf("server: timeout occurred, closing connection\n");
-                            break;
+                            // close(i);
                         } 
                         else 
                         {
                             perror("recv");
                         }
                         close(i);
-                        continue;
+                        break;
                     } 
                     else if (bytesReceived == 0) 
                     {
