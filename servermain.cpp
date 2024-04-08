@@ -12,6 +12,7 @@
 #include <signal.h>
 #include <string>
 #include <time.h>
+#include <sys/time.h> 
 #include <chrono>
 
 // Additional include for calcLib
@@ -20,7 +21,12 @@
 #define BACKLOG 5   // how many pending connections queue will hold
 #define MAXCLIENTS 5
 #define SECRETSTRING "konijiwa00"
+
+#define WAIT_TIME_SEC 5
+#define WAIT_TIME_USEC 0
+
 #define DEBUG
+
 
 using namespace std;
 
@@ -149,8 +155,6 @@ bool checkIntRandom(char* respondResultString,char* iresult_str)
     }
 }
 
-
-
 int main(int argc, char *argv[]) 
 {
     // Check if command-line argument is provided
@@ -256,12 +260,18 @@ int main(int argc, char *argv[])
     FD_ZERO(&redset);
     FD_SET(sockfd, &redset);
     int maxfd = sockfd;
+
     int num = 0;
+
+    struct timeval timeout;
+    timeout.tv_sec = WAIT_TIME_SEC;
+    timeout.tv_usec = WAIT_TIME_USEC ;
 
     while(1)
     {
         fd_set tmp = redset;
-        int ret = select(maxfd+1,&tmp,NULL,NULL,NULL);
+        int ret = select(maxfd+1,&tmp,NULL,NULL,&timeout);
+
         // 判断是否listen
         if(FD_ISSET(sockfd,&tmp))
         {
