@@ -499,6 +499,7 @@ int main(int argc, char *argv[])
                         {
                             perror("recv");
                         }
+                        num--;
                         close(i);
                         break;
                     } 
