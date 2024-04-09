@@ -263,14 +263,27 @@ int main(int argc, char *argv[])
 
     int num = 0;
 
-    struct timeval timeout;
-    timeout.tv_sec = WAIT_TIME_SEC;
-    timeout.tv_usec = WAIT_TIME_USEC ;
+    // struct timeval timeout;
+    // timeout.tv_sec = WAIT_TIME_SEC;
+    // timeout.tv_usec = WAIT_TIME_USEC ;
 
     while(1)
     {
         fd_set tmp = redset;
-        int ret = select(maxfd+1,&tmp,NULL,NULL,&timeout);
+        int ret = select(maxfd+1,&tmp,NULL,NULL,NULL);
+        // int ret = select(maxfd+1,&tmp,NULL,NULL,&timeout);
+        // if(ret == -1)
+        // {   
+        //     // perror("select");
+        //     continue;
+        // }
+        // else if(ret == 0)
+        // {
+        //     printf("server: select timeout occurred, closing connection\n");
+        //     timeout.tv_sec = WAIT_TIME_SEC;
+        //     timeout.tv_usec = WAIT_TIME_USEC;
+        //     continue;
+        // }
 
         // 判断是否listen
         if(FD_ISSET(sockfd,&tmp))
@@ -278,27 +291,49 @@ int main(int argc, char *argv[])
             if(num<MAXCLIENTS)
             {
                 // client connection
-                struct sockaddr_storage their_addr; // connector's address information
-                socklen_t sin_size;
-                int cfd = accept(sockfd,(struct sockaddr *)&their_addr, &sin_size);
+                // struct sockaddr_storage their_addr; // connector's address information
+                // socklen_t sin_size;
+                // int cfd = accept(sockfd,(struct sockaddr *)&their_addr, &sin_size);
+                int cfd = accept(sockfd,NULL,NULL);
+                if(cfd==-1)
+                {
+                    // printf("sockfd: %d\n",sockfd);
+                    perror("accept");
+                    continue;
+                }
                 
                 num++;
 
-                char s[INET6_ADDRSTRLEN];
-                inet_ntop(their_addr.ss_family, get_in_addr((struct sockaddr *)&their_addr), s, sizeof s);
-                printf("server: got connection from %s\n", s);
+                // 超时
+                // struct timeval timeout;
+                // timeout.tv_sec = MAXRCVTIME;
+                // timeout.tv_usec = 0;
+                // if (setsockopt(cfd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout)) < 0) 
+                // {
+                //     perror("setsockopt");
+                //     close(cfd);
+                //     continue;
+                // }
+
+                // 打印连接信息
+                // char s[INET6_ADDRSTRLEN];
+                // inet_ntop(their_addr.ss_family, get_in_addr((struct sockaddr *)&their_addr), s, sizeof s);
+                // printf("server: got connection from %s\n", s);
+                printf("server: got connection %d\n", num);
 
                 FD_SET(cfd, &redset);
                 // 更新最大值
                 maxfd = cfd > maxfd ? cfd : maxfd;
+
                 // printf("maxfd:%d \n",maxfd);
-                
-                // printf("sockdf: %d,cfd: %d \n",sockfd,cfd);
+                // printf("sockfd: %d,cfd: %d \n",sockfd,cfd);
+
                 // Send supported protocol to client
                 std::string protocolMessage = "TEXT TCP 1.0\n";
                 // if (write(i, protocolMessage.c_str(), protocolMessage.length()) == -1) 
                 if (send(cfd, protocolMessage.c_str(), protocolMessage.length(), 0) == -1) 
                 {
+                    // printf("protocol\n");
                     perror("send");
                     close(cfd);
                     continue;
@@ -337,6 +372,11 @@ int main(int argc, char *argv[])
                     continue;
                 }
 
+                // send(i,"",1,0);
+
+                // printf("maxfd:%d \n",maxfd);
+                // printf("i:%d \n",i);
+
                 // Receive response from client
                 char buf[5]={0};
                 int len = recv(i, buf, sizeof(buf), 0);
@@ -345,7 +385,7 @@ int main(int argc, char *argv[])
                     if (errno == EWOULDBLOCK || errno == EAGAIN) 
                     {
                         // Timeout occurred
-                        printf("server: timeout occurred, closing connection\n");
+                        printf("server: protocol reply timeout occurred, closing connection\n");
                     } 
                     else 
                     {
@@ -355,6 +395,7 @@ int main(int argc, char *argv[])
                     close(i);
                     num--;
                     break;
+                    // continue;
                 }
                 else if(len == 0)
                 {
@@ -451,7 +492,7 @@ int main(int argc, char *argv[])
                         if (errno == EWOULDBLOCK || errno == EAGAIN) 
                         {
                             // Timeout occurred
-                            printf("server: timeout occurred, closing connection\n");
+                            printf("server: result reply timeout occurred, closing connection\n");
                             // close(i);
                         } 
                         else 
@@ -465,7 +506,8 @@ int main(int argc, char *argv[])
                     {
                         // Connection closed by the client
                         close(i);
-                        continue;
+                        // continue;
+                        break;
                     }
 
                     printf("server: receive respond: %s",respondResultString);
