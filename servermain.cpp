@@ -1,23 +1,24 @@
+#include <time.h>
 #include <stdio.h>
+#include <errno.h>
+#include <netdb.h>
 #include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <errno.h>
+#include <signal.h>
+#include <sys/wait.h>
+#include <sys/time.h> 
 #include <sys/types.h>
+#include <arpa/inet.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include <netdb.h>
-#include <arpa/inet.h>
-#include <sys/wait.h>
-#include <signal.h>
 #include <string>
-#include <time.h>
-#include <sys/time.h> 
-
+#include <cstring>
 
 // Additional include for calcLib
 #include "calcLib.h"
 
+#define NUM_SP 40
 #define BACKLOG 5   // how many pending connections queue will hold
 #define MAXCLIENTS 5
 #define SECRETSTRING "konijiwa00"
@@ -48,6 +49,42 @@ void *get_in_addr(struct sockaddr *sa)
         return &(((struct sockaddr_in*)sa)->sin_addr);
     }
     return &(((struct sockaddr_in6*)sa)->sin6_addr);
+}
+
+// transform domain into ipv4
+char* domain_to_ipv4(const char* domain) 
+{
+    struct addrinfo hints, *res, *p;
+    int status;
+    char ipstr[INET_ADDRSTRLEN];
+
+    memset(&hints, 0, sizeof hints);
+    hints.ai_family = AF_INET; // IPv4
+    hints.ai_socktype = SOCK_STREAM;
+
+    if ((status = getaddrinfo(domain, NULL, &hints, &res)) != 0) 
+    {
+        fprintf(stderr, "getaddrinfo: %s\\n", gai_strerror(status));
+        return NULL;
+    }
+
+    for (p = res; p != NULL; p = p->ai_next) 
+    {
+        struct sockaddr_in *ipv4 = (struct sockaddr_in *)p->ai_addr;
+        void *addr = &(ipv4->sin_addr);
+        inet_ntop(AF_INET, addr, ipstr, sizeof ipstr);
+        break; // find the first addr
+    }
+
+    freeaddrinfo(res); 
+
+    char *result = (char*)malloc(INET_ADDRSTRLEN);
+    if (result != NULL) 
+    {
+        strcpy(result, ipstr);
+    }
+
+    return result; // 返回IPv4地址的副本
 }
 
 char* generateRandom(char* ptr,double f1,double f2,int i1,int i2)
@@ -163,10 +200,55 @@ int main(int argc, char *argv[])
         fprintf(stderr, "Usage: %s <ip>:<port>\n", argv[0]);
         exit(1);
     }
+    
+    // check the number of ":"
+    char* splits[NUM_SP];
+    char* temp = strtok(argv[1],":");
+    int colonCounter=0;
+    int i = 0;
+    while(temp!=NULL)
+    {
 
-    // Parse IP and port from command-line argument
-    char *Desthost = strtok(argv[1], ":");
-    char *Destport = strtok(NULL, ":");
+        printf("TEMP:%d %s\n",i++,temp);
+        splits[colonCounter++]=temp;
+        temp=strtok(NULL,":");
+    }
+
+    printf("colonCounter: %d\n",colonCounter);
+    printf("TEMP: %s\n",temp);
+
+    // contingent on ipv4 or ipv6 or domain
+    char *Desthost = NULL;
+    char *Destport = NULL;
+    if(colonCounter==1)
+    {
+        
+        if(isdigit(Desthost[0]) == false)
+        {
+            Desthost=domain_to_ipv4(Desthost);
+        }
+        else
+        {
+            // Parse IP and port from command-line argument
+            Desthost = strtok(argv[1], ":");
+            Destport = strtok(NULL, ":");
+        }
+
+    }
+    else if(colonCounter>1)
+    {
+        // Parse IP and port from command-line argument
+        Desthost = splits[0];
+        Destport = splits[--colonCounter];
+        for(int i=1;i<colonCounter;i++)
+        {
+            // sprintf(Desthost,"%s:%s",Desthost,splits[i]);
+            char  tempBuffer[100];//创建一个临时缓冲区
+            sprintf(tempBuffer, "%s:%s", Desthost, splits[i]);//将格式化后的字符串存储在临时缓冲区中
+            strcpy(Desthost,tempBuffer);//将临时缓冲区中的内容复制到目标缓冲区中
+        }
+    }
+    
     if (Desthost == NULL || Destport == NULL) 
 	{
         fprintf(stderr, "Invalid IP:Port format\n");
@@ -176,10 +258,10 @@ int main(int argc, char *argv[])
 
 #ifdef DEBUG  
     // Convert port to integer
-    // int port = atoi(Destport);
-    // printf("Host %s, and port %d.\n",Desthost,port);
+    int port = atoi(Destport);
+    printf("Host %s, and port %d.\n",Desthost,port);
 #endif
-    printf("server on %s:%s \n",Desthost,Destport);
+    // printf("server on %s:%s \n",Desthost,Destport);
 
     // Setup random seed
     // srand(time(NULL));
@@ -548,6 +630,7 @@ int main(int argc, char *argv[])
     }
 //-----------------------------
 
+    // free(Desthost);
     close(sockfd);
 
     return 0;
