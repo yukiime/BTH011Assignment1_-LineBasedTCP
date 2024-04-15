@@ -25,7 +25,7 @@
 
 #define WAIT_TIME_SEC 5
 #define WAIT_TIME_USEC 0
-#define MAXRCVTIME 5
+#define MAXRCVTIME 105
 #define DEBUG
 
 
