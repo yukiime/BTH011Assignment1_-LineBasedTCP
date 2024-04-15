@@ -23,7 +23,7 @@
 #define MAXCLIENTS 5
 #define SECRETSTRING "konijiwa00"
 
-#define WAIT_TIME_SEC 5
+#define WAIT_TIME_SEC 10005
 #define WAIT_TIME_USEC 0
 #define MAXRCVTIME 5
 #define DEBUG
@@ -344,7 +344,7 @@ int main(int argc, char *argv[])
         }
     }
 
-    
+
     if (listen(sockfd, BACKLOG) == -1) 
 	{
         perror("listen");  
@@ -361,292 +361,261 @@ int main(int argc, char *argv[])
 
     int num = 0;
 
-    // struct timeval timeout;
-    // timeout.tv_sec = WAIT_TIME_SEC;
-    // timeout.tv_usec = WAIT_TIME_USEC ;
 
     while(1)
     {
-        fd_set tmp = redset;
-        int ret = select(maxfd+1,&tmp,NULL,NULL,NULL);
-        // int ret = select(maxfd+1,&tmp,NULL,NULL,&timeout);
-        // if(ret == -1)
-        // {   
-        //     // perror("select");
-        //     continue;
-        // }
-        // else if(ret == 0)
-        // {
-        //     printf("server: select timeout occurred, closing connection\n");
-        //     timeout.tv_sec = WAIT_TIME_SEC;
-        //     timeout.tv_usec = WAIT_TIME_USEC;
-        //     continue;
-        // }
-
-        // 判断是否listen
-        if(FD_ISSET(sockfd,&tmp))
+        
+        if(num<MAXCLIENTS)
         {
-            if(num<MAXCLIENTS)
+            // client connection
+            // struct sockaddr_storage their_addr; // connector's address information
+            // socklen_t sin_size;
+            // int cfd = accept(sockfd,(struct sockaddr *)&their_addr, &sin_size);
+            int cfd = accept(sockfd,NULL,NULL);
+            if(cfd==-1)
             {
-                // client connection
-                // struct sockaddr_storage their_addr; // connector's address information
-                // socklen_t sin_size;
-                // int cfd = accept(sockfd,(struct sockaddr *)&their_addr, &sin_size);
-                int cfd = accept(sockfd,NULL,NULL);
-                if(cfd==-1)
-                {
-                    // printf("sockfd: %d\n",sockfd);
-                    perror("accept");
-                    continue;
-                }
-                
-                num++;
-
-                // 超时
-                // struct timeval timeout;
-                // timeout.tv_sec = MAXRCVTIME;
-                // timeout.tv_usec = 0;
-                // if (setsockopt(cfd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout)) < 0) 
-                // {
-                //     perror("setsockopt");
-                //     close(cfd);
-                //     continue;
-                // }
-
-                // 打印连接信息
-                // char s[INET6_ADDRSTRLEN];
-                // inet_ntop(their_addr.ss_family, get_in_addr((struct sockaddr *)&their_addr), s, sizeof s);
-                // printf("server: got connection from %s\n", s);
-                printf("server: got connection %d\n", num);
-
-                FD_SET(cfd, &redset);
-                // 更新最大值
-                maxfd = cfd > maxfd ? cfd : maxfd;
-
-                // printf("maxfd:%d \n",maxfd);
-                // printf("sockfd: %d,cfd: %d \n",sockfd,cfd);
-
-                // Send supported protocol to client
-                std::string protocolMessage = "TEXT TCP 1.0\n";
-                // if (write(i, protocolMessage.c_str(), protocolMessage.length()) == -1) 
-                if (send(cfd, protocolMessage.c_str(), protocolMessage.length(), 0) == -1) 
-                {
-                    // printf("protocol\n");
-                    perror("send");
-                    close(cfd);
-                    continue;
-                }
+                // printf("sockfd: %d\n",sockfd);
+                perror("accept");
+                continue;
             }
-            else
+            
+            num++;
+
+            // 打印连接信息
+            // char s[INET6_ADDRSTRLEN];
+            // inet_ntop(their_addr.ss_family, get_in_addr((struct sockaddr *)&their_addr), s, sizeof s);
+            // printf("server: got connection from %s\n", s);
+            printf("server: got connection %d\n", num);
+
+            FD_SET(cfd, &redset);
+            // 更新最大值
+            maxfd = cfd > maxfd ? cfd : maxfd;
+
+            // printf("maxfd:%d \n",maxfd);
+            // printf("sockfd: %d,cfd: %d \n",sockfd,cfd);
+
+            // Send supported protocol to client
+            std::string protocolMessage = "TEXT TCP 1.0\n";
+            // if (write(i, protocolMessage.c_str(), protocolMessage.length()) == -1) 
+            if (send(cfd, protocolMessage.c_str(), protocolMessage.length(), 0) == -1) 
             {
-                // client connection
-                struct sockaddr_storage their_addr; // connector's address information
-                socklen_t sin_size;
-                int cfd = accept(sockfd,(struct sockaddr *)&their_addr, &sin_size);
-
-                std::string protocolMessage = "Reject, out of queue\n";
-                if (send(cfd, protocolMessage.c_str(), protocolMessage.length(), 0) == -1) 
-                {
-                    perror("send");
-                    close(cfd);
-                    continue;
-                }
-
+                // printf("protocol\n");
+                perror("send");
                 close(cfd);
+                continue;
             }
         }
+        else
+        {
+            // client connection
+            struct sockaddr_storage their_addr; // connector's address information
+            socklen_t sin_size;
+            int cfd = accept(sockfd,(struct sockaddr *)&their_addr, &sin_size);
+
+            std::string protocolMessage = "Reject, out of queue\n";
+            if (send(cfd, protocolMessage.c_str(), protocolMessage.length(), 0) == -1) 
+            {
+                perror("send");
+                close(cfd);
+                continue;
+            }
+
+            close(cfd);
+        }
+        // time out
+        struct timeval timeout;
+        timeout.tv_sec = WAIT_TIME_SEC;
+        timeout.tv_usec = 0;
+        
+        //select
+        fd_set tmp = redset;
+        int ret = select(maxfd+1,&tmp,NULL,NULL,&timeout);
+        
+        //
+        char buf[5]={0};
+        if(ret == -1)
+        {
+            perror("select()");
+        }
+        else if(ret)
+        {
+            int len = recv(maxfd, buf, sizeof(buf), 0);
+            if (len == -1) 
+            {
+                if (errno == EWOULDBLOCK || errno == EAGAIN) 
+                {
+                    // Timeout occurred
+                    printf("server: protocol reply timeout occurred, closing connection\n");
+                } 
+                else 
+                {
+                    perror("recv");
+                }
+                FD_CLR(maxfd, &redset);
+                close(maxfd);
+                num--;
+                continue;
+            }
+            else if(len == 0)
+            {
+                printf("client closed connection...\n");
+                FD_CLR(maxfd, &redset);
+                close(maxfd);
+                num--;
+            }          
+        }
+        else
+        {
+            printf("server: protocol reply timeout occurred, closing connection\n");
+            FD_CLR(maxfd, &redset);
+            close(maxfd);
+            num--;
+            continue;
+        }
+
+        char buf_pre3[4];
+        for (int i = 0; i < 3; ++i) 
+        {
+            buf_pre3[i] = buf[i];
+        }
+        buf_pre3[3] = '\0'; // end
+        
+        // Check if client accepted the protocol
+        if (strcmp(buf_pre3, "OK\n") != 0) 
+        {
+            printf("Client can not accept this protocol.\nDisconnecting.\n");
+            FD_CLR(maxfd, &redset);
+            close(maxfd);
+            num--;
+            continue;
+        }
+        
+        // 清空缓存区,理论上没有用
+        memset(buf, 0, sizeof(buf));
 
         for(int i=0;i<=maxfd;++i)
         {
             if(i!=sockfd && FD_ISSET(i, &tmp))
             {
-                struct timeval timeout;
-                timeout.tv_sec = MAXRCVTIME;
-                timeout.tv_usec = 0;
-                if (setsockopt(i, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout)) < 0) 
+                struct timeval timeout_calculator;
+                timeout_calculator.tv_sec = WAIT_TIME_SEC;
+                timeout_calculator.tv_usec = 0;
+                if (setsockopt(i, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout_calculator, sizeof(timeout_calculator)) < 0) 
                 {
                     perror("setsockopt");
+                    FD_CLR(i, &redset);
+                    close(i);
+                    num--;
+                    continue;
+                }
+                    
+                // Initialize the library, this is needed for this library. 
+                char *ptr;
+                ptr=randomType(); // Get a random arithemtic operator. 
+                double f1,f2;
+                int i1,i2;
+                i1=randomInt();
+                i2=randomInt();
+                f1=randomFloat();
+                f2=randomFloat();
+
+                // Generate random number
+                char* operation = generateRandom(ptr,f1,f2,i1,i2);
+                if (operation == NULL) 
+                {
+                    return -1;
+                }
+                char *formula = strtok(operation, "=");
+                char *result = strtok(NULL, "=");
+                char *result_copy = strdup(result);
+                if (result_copy == NULL) 
+                {
+                    return -1;
+                }
+
+                // Send formula to client
+                int tmpLength = strlen(formula);
+                formula[tmpLength] = '\n';
+                formula[tmpLength + 1] = '\0'; // 添加 null 终止符
+                if (send(i, formula, strlen(formula), 0) == -1) 
+                {
+                    perror("send");
                     close(i);
                     continue;
                 }
+                printf("server: send %s",formula);
 
-                // send(i,"",1,0);
+                char respondResultString[1024];
+                memset(respondResultString, 0, sizeof(respondResultString));
+                // if (recv(i, respondResultString, sizeof(respondResultString), 0) == -1) 
+                // {
+                //     perror("recv");
+                //     close(i);
+                //     continue;
+                // }
 
-                // printf("maxfd:%d \n",maxfd);
-                // printf("i:%d \n",i);
-
-                // Receive response from client
-                char buf[5]={0};
-                int len = recv(i, buf, sizeof(buf), 0);
-                if (len == -1) 
+                int bytesReceived = recv(i, respondResultString, sizeof(respondResultString), 0);
+                if (bytesReceived == -1) 
                 {
                     if (errno == EWOULDBLOCK || errno == EAGAIN) 
                     {
                         // Timeout occurred
-                        printf("server: protocol reply timeout occurred, closing connection\n");
+                        printf("server: result reply timeout occurred, closing connection\n");
+                        // close(i);
                     } 
                     else 
                     {
                         perror("recv");
                     }
-
-                    close(i);
+                    FD_CLR(i, &redset);
                     num--;
+                    close(i);
                     break;
-                    // continue;
-                }
-                else if(len == 0)
+                } 
+                else if (bytesReceived == 0) 
                 {
-                    printf("client closed connection...\n");
+                    // Connection closed by the client
                     FD_CLR(i, &redset);
                     close(i);
-                    num--;
-                }          
-
-                char buf_pre3[4];
-                for (int i = 0; i < 3; ++i) 
-                {
-                    buf_pre3[i] = buf[i];
-                }
-                buf_pre3[3] = '\0'; // end
-                
-                // Check if client accepted the protocol
-                if (strcmp(buf_pre3, "OK\n") != 0) 
-                {
-                    printf("Client can not accept this protocol.\nDisconnecting.\n");
-                    close(i);
-                    continue;
-                }
-                
-                // 清空缓存区,理论上没有用
-                memset(buf, 0, sizeof(buf));
-
-                
-                while(1)
-                {
-                    // // recv timeout
-                    // int nNetTimeout=5000;// 5 sec
-                    // setsockopt(i,SOL_SOCKET,SO_RCVTIMEO,(char *)&nNetTimeout,sizeof(int));
-                    
-                    // struct timeval timeout;
-                    // timeout.tv_sec = MAXRCVTIME;
-                    // timeout.tv_usec = 0;
-                    // if (setsockopt(i, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout)) < 0) 
-                    // {
-                    //     perror("setsockopt");
-                    //     close(i);
-                    //     continue;
-                    // }
-
-
-                    // Initialize the library, this is needed for this library. 
-                    char *ptr;
-                    ptr=randomType(); // Get a random arithemtic operator. 
-                    double f1,f2;
-                    int i1,i2;
-                    i1=randomInt();
-                    i2=randomInt();
-                    f1=randomFloat();
-                    f2=randomFloat();
-
-                    // Generate random number
-                    char* operation = generateRandom(ptr,f1,f2,i1,i2);
-                    if (operation == NULL) 
-                    {
-                        return -1;
-                    }
-                    char *formula = strtok(operation, "=");
-                    char *result = strtok(NULL, "=");
-                    char *result_copy = strdup(result);
-                    if (result_copy == NULL) 
-                    {
-                        return -1;
-                    }
-
-                    // Send formula to client
-                    int tmpLength = strlen(formula);
-                    formula[tmpLength] = '\n';
-                    formula[tmpLength + 1] = '\0'; // 添加 null 终止符
-                    if (send(i, formula, strlen(formula), 0) == -1) 
-                    {
-                        perror("send");
-                        close(i);
-                        continue;
-                    }
-                    printf("server: send %s",formula);
-
-                    char respondResultString[1024];
-                    memset(respondResultString, 0, sizeof(respondResultString));
-                    // if (recv(i, respondResultString, sizeof(respondResultString), 0) == -1) 
-                    // {
-                    //     perror("recv");
-                    //     close(i);
-                    //     continue;
-                    // }
-
-                    int bytesReceived = recv(i, respondResultString, sizeof(respondResultString), 0);
-                    if (bytesReceived == -1) 
-                    {
-                        if (errno == EWOULDBLOCK || errno == EAGAIN) 
-                        {
-                            // Timeout occurred
-                            printf("server: result reply timeout occurred, closing connection\n");
-                            // close(i);
-                        } 
-                        else 
-                        {
-                            perror("recv");
-                        }
-                        num--;
-                        close(i);
-                        break;
-                    } 
-                    else if (bytesReceived == 0) 
-                    {
-                        // Connection closed by the client
-                        close(i);
-                        // continue;
-                        break;
-                    }
-
-                    printf("server: receive respond: %s",respondResultString);
-                    printf("server: correct result:%s",result_copy);
-
-                    bool checkflag = NULL;     
-                    if(ptr[0]=='f')
-                    {
-                        checkflag = checkDoubleRandom(respondResultString,result_copy);
-                        
-                    } 
-                    else
-                    {
-                        checkflag = checkIntRandom(respondResultString,result_copy);
-                    }
-
-                    free(result_copy);    
-
-                    if(checkflag)
-                    {
-                        printf("server: OK\n");
-                    }
-                    else
-                    {
-                        printf("server: ERROR\n");
-                        
-                    }
-
-                    // 顺手关掉
-                    close(i);
-                    num--;
+                    // continue;
                     break;
                 }
-    
+
+                printf("server: receive respond: %s",respondResultString);
+                printf("server: correct result:%s",result_copy);
+
+                bool checkflag = NULL;     
+                if(ptr[0]=='f')
+                {
+                    checkflag = checkDoubleRandom(respondResultString,result_copy);
+                    
+                } 
+                else
+                {
+                    checkflag = checkIntRandom(respondResultString,result_copy);
+                }
+
+                free(result_copy);    
+
+                if(checkflag)
+                {
+                    printf("server: OK\n");
+                }
+                else
+                {
+                    printf("server: ERROR\n");
+                    
+                }
+
+                // 顺手关掉
+                close(i);
+                FD_CLR(i, &redset);
+                num--;
             }
         }
     }
 //-----------------------------
 
-    // free(Desthost);
     close(sockfd);
 
     return 0;
