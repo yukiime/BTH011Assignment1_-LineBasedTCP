@@ -387,9 +387,9 @@ int main(int argc, char *argv[])
             // printf("server: got connection from %s\n", s);
             printf("server: got connection %d\n", num);
 
-            FD_SET(cfd, &redset);
-            // 更新最大值
-            maxfd = cfd > maxfd ? cfd : maxfd;
+            // FD_SET(cfd, &redset);
+            // // 更新最大值
+            // maxfd = cfd > maxfd ? cfd : maxfd;
 
             // printf("maxfd:%d \n",maxfd);
             // printf("sockfd: %d,cfd: %d \n",sockfd,cfd);
@@ -493,6 +493,130 @@ int main(int argc, char *argv[])
         // 清空缓存区,理论上没有用
         memset(buf, 0, sizeof(buf));
 
+
+        fd_set redset_calculator;
+        FD_ZERO(&redset_calculator);
+        FD_SET(maxfd,&redset_calculator);
+
+        struct timeval timeout_calculator;
+        timeout_calculator.tv_sec = WAIT_TIME_SEC;
+        timeout_calculator.tv_usec = 0;
+            
+        // Initialize the library, this is needed for this library. 
+        char *ptr;
+        ptr=randomType(); // Get a random arithemtic operator. 
+        double f1,f2;
+        int i1,i2;
+        i1=randomInt();
+        i2=randomInt();
+        f1=randomFloat();
+        f2=randomFloat();
+
+        // Generate random number
+        char* operation = generateRandom(ptr,f1,f2,i1,i2);
+        if (operation == NULL) 
+        {
+            return -1;
+        }
+        char *formula = strtok(operation, "=");
+        char *result = strtok(NULL, "=");
+        char *result_copy = strdup(result);
+        if (result_copy == NULL) 
+        {
+            return -1;
+        }
+
+        // Send formula to client
+        int tmpLength = strlen(formula);
+        formula[tmpLength] = '\n';
+        formula[tmpLength + 1] = '\0'; // 添加 null 终止符
+        if (send(maxfd, formula, strlen(formula), 0) == -1) 
+        {
+            perror("send");
+            close(maxfd);
+            continue;
+        }
+        printf("server: send %s",formula);
+
+        char respondResultString[1024];
+        memset(respondResultString, 0, sizeof(respondResultString));
+
+        int checkReceived = select(maxfd + 1,&redset_calculator,NULL,NULL,&timeout_calculator);
+        if (checkReceived == -1)
+        {
+            perror("select()");
+        }
+        else if(checkReceived)
+        {
+            int bytesReceived = recv(maxfd, respondResultString, sizeof(respondResultString), 0);
+            if (bytesReceived == -1) 
+            {
+                if (errno == EWOULDBLOCK || errno == EAGAIN) 
+                {
+                    // Timeout occurred
+                    printf("server: result reply timeout occurred, closing connection\n");
+                    // close(i);
+                } 
+                else 
+                {
+                    perror("recv");
+                }
+                FD_CLR(maxfd, &redset_calculator);
+                num--;
+                close(maxfd);
+                continue;;
+            } 
+            else if (bytesReceived == 0) 
+            {
+                // Connection closed by the client
+                FD_CLR(maxfd, &redset_calculator);
+                close(maxfd);
+                continue;
+            }
+
+            printf("server: receive respond: %s",respondResultString);
+            printf("server: correct result:%s",result_copy);
+
+            bool checkflag = NULL;     
+            if(ptr[0]=='f')
+            {
+                checkflag = checkDoubleRandom(respondResultString,result_copy);
+                
+            } 
+            else
+            {
+                checkflag = checkIntRandom(respondResultString,result_copy);
+            }
+
+            free(result_copy);    
+
+            if(checkflag)
+            {
+                printf("server: OK\n");
+            }
+            else
+            {
+                printf("server: ERROR\n");
+                
+            }
+
+            // 顺手关掉
+            close(maxfd);
+            FD_CLR(maxfd, &redset_calculator);
+            num--;
+        }
+        else
+        {
+            printf("server: result reply timeout occurred, closing connection\n");
+            FD_CLR(maxfd, &redset_calculator);
+            num--;
+            close(maxfd);
+            continue;
+        }
+        
+
+        
+        /*
         for(int i=0;i<=maxfd;++i)
         {
             if(i!=sockfd && FD_ISSET(i, &tmp))
@@ -613,6 +737,7 @@ int main(int argc, char *argv[])
                 num--;
             }
         }
+        */
     }
 //-----------------------------
 
