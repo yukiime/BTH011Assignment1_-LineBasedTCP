@@ -14,11 +14,11 @@
 #include <netinet/in.h>
 #include <string>
 #include <cstring>
+#include <iostream>
 
 // Additional include for calcLib
 #include "calcLib.h"
 
-#define NUM_SP 40
 #define BACKLOG 5   // how many pending connections queue will hold
 #define MAXCLIENTS 5
 #define SECRETSTRING "konijiwa00"
@@ -49,6 +49,11 @@ void *get_in_addr(struct sockaddr *sa)
         return &(((struct sockaddr_in*)sa)->sin_addr);
     }
     return &(((struct sockaddr_in6*)sa)->sin6_addr);
+}
+
+bool isIPv6(const char* str) 
+{
+    return (strchr(str, ':') != nullptr);
 }
 
 // transform domain into ipv4
@@ -200,55 +205,52 @@ int main(int argc, char *argv[])
         fprintf(stderr, "Usage: %s <ip>:<port>\n", argv[0]);
         exit(1);
     }
-    
-    // check the number of ":"
-    char* splits[NUM_SP];
-    char* temp = strtok(argv[1],":");
-    int colonCounter=0;
-    int i = 0;
-    while(temp!=NULL)
-    {
-
-        printf("TEMP:%d %s\n",i++,temp);
-        splits[colonCounter++]=temp;
-        temp=strtok(NULL,":");
-    }
-
-    printf("colonCounter: %d\n",colonCounter);
-    printf("TEMP: %s\n",temp);
-
-    // contingent on ipv4 or ipv6 or domain
+   
+    // silpt
     char *Desthost = NULL;
     char *Destport = NULL;
-    if(colonCounter==1)
+    char* last_colon = strrchr(argv[1], ':');
+
+    if (last_colon != nullptr) 
     {
-        
-        if(isdigit(Desthost[0]) == false)
-        {
-            Desthost=domain_to_ipv4(Desthost);
-        }
-        else
-        {
-            // Parse IP and port from command-line argument
-            Desthost = strtok(argv[1], ":");
-            Destport = strtok(NULL, ":");
-        }
+        *last_colon = '\0'; // 将冒号替换为字符串结束符，从而分割字符串.
+        Desthost = new char[strlen(argv[1]) + 1];
+        strcpy(Desthost, argv[1]);
+        Destport = new char[strlen(last_colon + 1) + 1];
+        strcpy(Destport, last_colon + 1);
+        // Desthost = argv[1];
+        // Destport = last_colon + 1;
 
     }
-    else if(colonCounter>1)
+
+    // ipv4 or ipv6 or domain
+    char* temp = new char[strlen(Desthost) + 1]; // 创建Host字符串的拷贝
+    strcpy(temp, Desthost);
+    bool isIPv6_flag = false;
+    if (isIPv6(temp)) 
     {
-        // Parse IP and port from command-line argument
-        Desthost = splits[0];
-        Destport = splits[--colonCounter];
-        for(int i=1;i<colonCounter;i++)
-        {
-            // sprintf(Desthost,"%s:%s",Desthost,splits[i]);
-            char  tempBuffer[100];//创建一个临时缓冲区
-            sprintf(tempBuffer, "%s:%s", Desthost, splits[i]);//将格式化后的字符串存储在临时缓冲区中
-            strcpy(Desthost,tempBuffer);//将临时缓冲区中的内容复制到目标缓冲区中
-        }
+        isIPv6_flag = true;
+        // std::cout << "IPv6 address detected." << std::endl;
+    }
+    else if (isdigit(temp[0])) 
+    {
+        isIPv6_flag = false;
+        // std::cout << "IPv4 address detected." << std::endl;
+    } 
+    else 
+    {
+        isIPv6_flag = false;
+        // std::cout << "Domain" << std::endl;
     }
     
+
+        
+//     if(isdigit(Desthost[0]) == false)
+//     {
+//         Desthost=domain_to_ipv4(Desthost);
+//     }
+
+
     if (Desthost == NULL || Destport == NULL) 
 	{
         fprintf(stderr, "Invalid IP:Port format\n");
@@ -258,77 +260,91 @@ int main(int argc, char *argv[])
 
 #ifdef DEBUG  
     // Convert port to integer
-    int port = atoi(Destport);
-    printf("Host %s, and port %d.\n",Desthost,port);
+    // int port = atoi(Destport);
+    // printf("Host %s, and port %d.\n",Desthost,port);
 #endif
-    // printf("server on %s:%s \n",Desthost,Destport);
-
+    printf("server on %s:%s \n",Desthost,Destport);
+    int port = atoi(Destport);
     // Setup random seed
     // srand(time(NULL));
 
     // Setup signal handler
-    struct sigaction sa;
-    sa.sa_handler = sigchld_handler;
-    sigemptyset(&sa.sa_mask);
-    sa.sa_flags = SA_RESTART;
-    if (sigaction(SIGCHLD, &sa, NULL) == -1) 
-	{
-        perror("sigaction");
-        exit(1);
-    }
-
+    // struct sigaction sa;
+    // sa.sa_handler = sigchld_handler;
+    // sigemptyset(&sa.sa_mask);
+    // sa.sa_flags = SA_RESTART;
+    // if (sigaction(SIGCHLD, &sa, NULL) == -1) 
+	// {
+    //     perror("sigaction");
+    //     exit(1);
+    // }
+    
+    int rv;
+    int yes=1;
+    int sockfd;
+    
     // Set up hints for getaddrinfo
     struct addrinfo hints, *servinfo, *p;
     memset(&hints, 0, sizeof hints);
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_flags = AI_PASSIVE;
-
-
-    // Get address information
-    int rv;
-    if ((rv = getaddrinfo(Desthost, Destport, &hints, &servinfo)) != 0) 
+    
+    if(isIPv6_flag)
     {
-
-        fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
-        return 1;
+        sockfd = socket(AF_INET6, SOCK_STREAM, 0);
+        struct sockaddr_in6 server_addr; // 使用IPv6的地址结构体
+        memset(&server_addr, 0, sizeof(server_addr)); // 初始化为0
+        server_addr.sin6_family = AF_INET6; // 设置地址族为IPv6
+        server_addr.sin6_port = htons(port); // 设置端口号
+        inet_pton(AF_INET6, Desthost, &server_addr.sin6_addr);
+        bind(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr));
     }
-
-    // Loop through all the results and bind to the first we can
-    int yes=1;
-    int sockfd;
-    for (p = servinfo; p != NULL; p = p->ai_next) 
-	{
-        if ((sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) 
-		{
-            perror("server: socket");
-            continue;
-        }
-
-        if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) == -1) 
+    else
+    {
+        // Get address information
+        if ((rv = getaddrinfo(Desthost, Destport, &hints, &servinfo)) != 0) 
         {
-			perror("setsockopt");
-			exit(1);
-		}
 
-        if (bind(sockfd, p->ai_addr, p->ai_addrlen) == -1) 
-		{
-            close(sockfd);
-            perror("server: bind");
-            continue;
+            fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
+            return 1;
         }
 
-        break;
+        // Loop through all the results and bind to the first we can
+        for (p = servinfo; p != NULL; p = p->ai_next) 
+        {
+            if ((sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) 
+            {
+                perror("server: socket");
+                continue;
+            }
+
+            if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) == -1) 
+            {
+                perror("setsockopt");
+                exit(1);
+            }
+
+            if (bind(sockfd, p->ai_addr, p->ai_addrlen) == -1) 
+            {
+                close(sockfd);
+                perror("server: bind");
+                continue;
+            }
+
+            break;
+        }
+
+        freeaddrinfo(servinfo);
+
+        if (p == NULL) 
+        {
+            fprintf(stderr, "server: failed to bind\n");
+            exit(1);
+        }
     }
 
-    freeaddrinfo(servinfo);
-
-    if (p == NULL) 
-	{
-        fprintf(stderr, "server: failed to bind\n");
-        exit(1);
-    }
-
+    
     if (listen(sockfd, BACKLOG) == -1) 
 	{
         perror("listen");  
