@@ -357,7 +357,6 @@ int main(int argc, char *argv[])
 
     int num = 0;
 
-
     while(1)
     {
         int cfd;
@@ -428,8 +427,8 @@ int main(int argc, char *argv[])
         FD_ZERO(&redset);
         FD_SET(cfd, &redset);
         int maxfd = cfd;
-        fd_set tmp = redset;
-        int ret = select(maxfd+1,&tmp,NULL,NULL,&timeout);
+        // fd_set tmp = redset;
+        int ret = select(maxfd+1,&redset,NULL,NULL,&timeout);
         
         //
         char buf[5]={0};
@@ -439,7 +438,7 @@ int main(int argc, char *argv[])
         }
         else if(ret)
         {
-            int len = recv(maxfd, buf, sizeof(buf), 0);
+            int len = recv(cfd, buf, sizeof(buf), 0);
             if (len == -1) 
             {
                 if (errno == EWOULDBLOCK || errno == EAGAIN) 
@@ -451,26 +450,24 @@ int main(int argc, char *argv[])
                 {
                     perror("recv");
                 }
-                FD_CLR(maxfd, &redset);
-                close(maxfd);
+                FD_CLR(cfd, &redset);
+                close(cfd);
                 num--;
-                continue;
             }
             else if(len == 0)
             {
                 printf("client closed connection...\n");
-                FD_CLR(maxfd, &redset);
-                close(maxfd);
+                FD_CLR(cfd, &redset);
+                close(cfd);
                 num--;
             }          
         }
         else
         {
             printf("server: protocol reply timeout occurred, closing connection\n");
-            FD_CLR(maxfd, &redset);
-            close(maxfd);
+            FD_CLR(cfd, &redset);
+            close(cfd);
             num--;
-            continue;
         }
 
         char buf_pre3[4];
@@ -484,8 +481,8 @@ int main(int argc, char *argv[])
         if (strcmp(buf_pre3, "OK\n") != 0) 
         {
             printf("Client can not accept this protocol.\nDisconnecting.\n");
-            FD_CLR(maxfd, &redset);
-            close(maxfd);
+            FD_CLR(cfd, &redset);
+            close(cfd);
             num--;
             continue;
         }
@@ -496,7 +493,7 @@ int main(int argc, char *argv[])
 
         fd_set redset_calculator;
         FD_ZERO(&redset_calculator);
-        FD_SET(maxfd,&redset_calculator);
+        FD_SET(cfd,&redset_calculator);
 
         struct timeval timeout_calculator;
         timeout_calculator.tv_sec = WAIT_TIME_SEC;
@@ -530,10 +527,10 @@ int main(int argc, char *argv[])
         int tmpLength = strlen(formula);
         formula[tmpLength] = '\n';
         formula[tmpLength + 1] = '\0'; // 添加 null 终止符
-        if (send(maxfd, formula, strlen(formula), 0) == -1) 
+        if (send(cfd, formula, strlen(formula), 0) == -1) 
         {
             perror("send");
-            close(maxfd);
+            close(cfd);
             continue;
         }
         printf("server: send %s",formula);
@@ -548,7 +545,7 @@ int main(int argc, char *argv[])
         }
         else if(checkReceived)
         {
-            int bytesReceived = recv(maxfd, respondResultString, sizeof(respondResultString), 0);
+            int bytesReceived = recv(cfd, respondResultString, sizeof(respondResultString), 0);
             if (bytesReceived == -1) 
             {
                 if (errno == EWOULDBLOCK || errno == EAGAIN) 
@@ -561,16 +558,16 @@ int main(int argc, char *argv[])
                 {
                     perror("recv");
                 }
-                FD_CLR(maxfd, &redset_calculator);
+                FD_CLR(cfd, &redset_calculator);
                 num--;
-                close(maxfd);
+                close(cfd);
                 continue;;
             } 
             else if (bytesReceived == 0) 
             {
                 // Connection closed by the client
-                FD_CLR(maxfd, &redset_calculator);
-                close(maxfd);
+                FD_CLR(cfd, &redset_calculator);
+                close(cfd);
                 continue;
             }
 
@@ -601,16 +598,16 @@ int main(int argc, char *argv[])
             }
 
             // 顺手关掉
-            close(maxfd);
-            FD_CLR(maxfd, &redset_calculator);
+            close(cfd);
+            // FD_CLR(cfd, &redset_calculator);
             num--;
         }
         else
         {
             printf("server: result reply timeout occurred, closing connection\n");
-            FD_CLR(maxfd, &redset_calculator);
+            // FD_CLR(cfd, &redset_calculator);
             num--;
-            close(maxfd);
+            close(cfd);
             continue;
         }
         
