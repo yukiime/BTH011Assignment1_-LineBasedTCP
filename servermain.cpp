@@ -1,64 +1,51 @@
-#include <time.h>
+//解析命令行参数中的主机名和端口号，并在调试模式下打印它们
 #include <stdio.h>
-#include <errno.h>
-#include <netdb.h>
 #include <string.h>
 #include <stdlib.h>
-#include <unistd.h>
-#include <signal.h>
-#include <sys/wait.h>
+#include<sys/socket.h>
+#include<netinet/in.h>
+#include<arpa/inet.h>
+#include<unistd.h>
+#include<math.h>
+#include <netdb.h>
 #include <sys/time.h> 
-#include <sys/types.h>
+#include <cerrno>
+#include <stdbool.h>
+#include <regex.h>
+#include <netdb.h>
 #include <arpa/inet.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <string>
-#include <cstring>
-#include <iostream>
+#include<string>
 
-// Additional include for calcLib
-#include "calcLib.h"
+/* You will to add includes here */
 
-#define BACKLOG 5   // how many pending connections queue will hold
-#define MAXCLIENTS 5
-#define SECRETSTRING "konijiwa00"
 
-#define WAIT_TIME_SEC 10005
-#define WAIT_TIME_USEC 0
-#define MAXRCVTIME 5
+// Included to get the support library
+#include <calcLib.h>
+
+// Enable if you want debugging to be printed, see examble below.
+// Alternative, pass CFLAGS=-DDEBUG to make, make CFLAGS=-DDEBUG
 #define DEBUG
+
+//定义版本号
+#define PROTOCOL_VERSION "TEXT TCP 1.0\n\n"
 
 
 using namespace std;
 
-void sigchld_handler(int s)
-{
-    (void)s;
+int CAP=2000;
+int MAX_CLIENTS =5;//设置最大客户端数量
 
-    // waitpid() might overwrite errno, so we save and restore it:
-    int saved_errno = errno;
-    while(waitpid(-1, NULL, WNOHANG) > 0);
-    errno = saved_errno;
+//判断是否是域名
+bool is_domain(const std::string&  input) {
+  printf("Execute IPv6.\n");
+  if(isdigit(input[0])){
+    return false;
+  }
+  return  true;
 }
 
-// Get sockaddr, IPv4 or IPv6:
-void *get_in_addr(struct sockaddr *sa)
-{
-    if (sa->sa_family == AF_INET) 
-	{
-        return &(((struct sockaddr_in*)sa)->sin_addr);
-    }
-    return &(((struct sockaddr_in6*)sa)->sin6_addr);
-}
-
-bool isIPv6(const char* str) 
-{
-    return (strchr(str, ':') != nullptr);
-}
-
-// transform domain into ipv4
-char* domain_to_ipv4(const char* domain) 
-{
+//域名转ipv4
+char* domain_to_ipv4(const char* domain) {
     struct addrinfo hints, *res, *p;
     int status;
     char ipstr[INET_ADDRSTRLEN];
@@ -67,678 +54,288 @@ char* domain_to_ipv4(const char* domain)
     hints.ai_family = AF_INET; // IPv4
     hints.ai_socktype = SOCK_STREAM;
 
-    if ((status = getaddrinfo(domain, NULL, &hints, &res)) != 0) 
-    {
+    if ((status = getaddrinfo(domain, NULL, &hints, &res)) != 0) {
         fprintf(stderr, "getaddrinfo: %s\\n", gai_strerror(status));
         return NULL;
     }
 
-    for (p = res; p != NULL; p = p->ai_next) 
-    {
+    // 遍历结果，找到第一个IPv4地址
+    for (p = res; p != NULL; p = p->ai_next) {
         struct sockaddr_in *ipv4 = (struct sockaddr_in *)p->ai_addr;
         void *addr = &(ipv4->sin_addr);
         inet_ntop(AF_INET, addr, ipstr, sizeof ipstr);
-        break; // find the first addr
+        break; // 找到第一个地址就退出循环
     }
 
-    freeaddrinfo(res); 
+    freeaddrinfo(res); // 释放内存
+    return strdup(ipstr); // 返回IPv4地址的副本
+}
 
-    char *result = (char*)malloc(INET_ADDRSTRLEN);
-    if (result != NULL) 
-    {
-        strcpy(result, ipstr);
+
+int main(int argc, char *argv[]){
+  //检查命令行参数是否符合要求
+  if (argc != 2){
+    fprintf(stderr, "Incorrect format:%s\n",argv[0]);
+    return 1;
+  }
+  /*
+    Read first input, assumes <ip>:<port> syntax, convert into one string (Desthost) and one integer (port). 
+     Atm, works only on dotted notation, i.e. IPv4 and DNS. IPv6 does not work if its using ':'. 
+  */
+ //解析主机名和端口号
+  char* splits[CAP];
+  char* p = strtok(argv[1],":");//根据：进行分割
+  int delimCounter=0;//这个标志用来记录：的数量，来判断是ipv6还是ipv4
+  char* Desthost=NULL;//目标服务器的ip
+  char* Destport=NULL;//目标服务器的端口
+  int ip_version=0;
+  while(p!=NULL){
+    splits[delimCounter++]=p;
+    p=strtok(NULL,":");
+  }
+
+
+  
+  Destport = splits[--delimCounter];//填充端口号
+  Desthost = splits[0];//填充ip地址
+  printf("deliCounter: %d\n",delimCounter);
+  if(delimCounter==1){
+    ip_version=4;
+    if(is_domain(Desthost)){
+      Desthost=domain_to_ipv4(Desthost);
+      printf("Is Domain Name.\n");
     }
 
-    return result; // 返回IPv4地址的副本
-}
+  }else if(delimCounter>1){
+    ip_version=6;
+  }
+  printf("Receive IPv%d.\n",ip_version);
+  for(int i=1;i<delimCounter;i++){
+    // sprintf(Desthost,"%s:%s",Desthost,splits[i]);
+    char  tempBuffer[100];//创建一个临时缓冲区
+  	sprintf(tempBuffer, "%s:%s", Desthost, splits[i]);//将格式化后的字符串存储在临时缓冲区中
+	  strcpy(Desthost,tempBuffer);//将临时缓冲区中的内容复制到目标缓冲区中
+  }
+  int port=atoi(Destport);//将字符串转化为int
+  
+  
+  // *Desthost now points to a sting holding whatever came before the delimiter, ':'.
+  // *Dstport points to whatever string came after the delimiter. 
+  //检查主机名和端口号
+  if(Desthost == NULL || Destport == NULL){
+    fprintf(stderr,"Deskhost or Deskport is empty\n");
+    return 1;
+  }
 
-char* generateRandom(char* ptr,double f1,double f2,int i1,int i2)
-{
-    double fresult;
-    int iresult;
 
-	// printf("  Int Values: %d %d \n",i1,i2);
-	// printf("Float Values: %8.8g %8.8g \n",f1,f2);
-
-	
-	/* Act differently depending on what operator you got, judge type by first char in string. If 'f' then a float */
-	
-	if(ptr[0]=='f')
-    {
-		/* At this point, ptr holds operator, f1 and f2 the operands. Now we work to determine the reference result. */
-	
-		if(strcmp(ptr,"fadd")==0)
-		{
-			fresult=f1+f2;
-		} 
-		else if (strcmp(ptr, "fsub")==0)
-		{
-			fresult=f1-f2;
-		} 
-		else if (strcmp(ptr, "fmul")==0)
-		{
-			fresult=f1*f2;
-		} 
-		else if (strcmp(ptr, "fdiv")==0)
-		{
-			fresult=f1/f2;
-		}
-
-		char *operation = (char*)malloc(100); // Adjust buffer size accordingly
-        snprintf(operation, 100, "%s %8.8g %8.8g = %8.8g\n", ptr, f1, f2, fresult);
-        return operation;
-	} 
-	else
-	{
-		if(strcmp(ptr,"add")==0)
-		{
-			iresult=i1+i2;
-		} 
-		else if (strcmp(ptr, "sub")==0)
-		{
-			iresult=i1-i2;
-		} else if (strcmp(ptr, "mul")==0)
-		{
-			iresult=i1*i2;
-		} else if (strcmp(ptr, "div")==0)
-		{
-			iresult=i1/i2;
-		}
-
-		char *operation = (char*)malloc(100); // Adjust buffer size accordingly
-        snprintf(operation, 100, "%s %d %d = %d \n", ptr, i1, i2, iresult);
-		return operation;
-	}
-}
-
-bool checkDoubleRandom(char* respondResultString,char* fresult_str)
-{   
-    double respondResult;
-    sscanf(respondResultString, "%lg", &respondResult);
-    double real_fresult;
-    sscanf(fresult_str, " %lg", &real_fresult);
-    
+  /* Do magic */
+  //int port=atoi(Destport);
 #ifdef DEBUG  
-    // printf("DOUBLE re:%fend;\n",respondResult);
-    // printf("correct fresult_str: %s\n",fresult_str);
-    // printf("server: correct result: %8.8g\n",real_fresult);
+  printf("Host %s, and port %d.\n",Desthost,port);
 #endif
-    double difference = abs(respondResult-real_fresult);
-    if(difference < 0.0001)
-    {
-        return true;
-    }
-    else
-    {
-        return false;
-    }
+  //把端口号从string转换到int
+  port = atoi(Destport);
+
+
+
+int sockfd;
+if(ip_version==4){
+sockfd = socket(AF_INET, SOCK_STREAM, 0);// 创建TCP套接字
+struct sockaddr_in server_addr; // 使用IPv4的地址结构体
+memset(&server_addr, 0, sizeof(server_addr)); // 初始化为0
+server_addr.sin_family = AF_INET; // 设置地址族为IPv4
+server_addr.sin_port = htons(port); // 设置端口号
+inet_pton(AF_INET, Desthost, &server_addr.sin_addr);// 将字符串形式的IPv4地址转换为网络字节序
+bind(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr));// 绑定套接字到服务器地址
+//printf("Socket bound to %s:%d\n",Desthost,port);//打印绑定信息
+listen(sockfd,5);
+}else if(ip_version==6){
+sockfd = socket(AF_INET6, SOCK_STREAM, 0);
+struct sockaddr_in6 server_addr; // 使用IPv6的地址结构体
+memset(&server_addr, 0, sizeof(server_addr)); // 初始化为0
+server_addr.sin6_family = AF_INET6; // 设置地址族为IPv6
+server_addr.sin6_port = htons(port); // 设置端口号
+inet_pton(AF_INET6, Desthost, &server_addr.sin6_addr);
+bind(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr));
+//printf("Socket bound to %s:%d\n", Desthost, port);
+listen(sockfd, 5);
 }
 
-bool checkIntRandom(char* respondResultString,char* iresult_str)
-{
-    int respondResult;
-    sscanf(respondResultString, "%d", &respondResult);
-    int real_iresult;
-    sscanf(iresult_str, " %d", &real_iresult);
 
-#ifdef DEBUG  
-    // printf("INT re:%dend;\n",respondResult);
-    // printf("correct iresult_str: %s\n",iresult_str);
-    // printf("server: correct result: %d\n",real_iresult);
-#endif
-    int difference = abs(respondResult-real_iresult);
-    if(difference < 0.0001)
-    {
-        return true;
+
+
+  //记录已连接的客户端的数量
+  int connectedClients =0;
+
+
+  //循环接受客户端的连接
+  while(1){
+
+
+    struct sockaddr_in client_addr;//存储客户端地址信息的结构体
+    socklen_t client_len = sizeof(client_addr);//获取客户端地址结构体的大小
+    int client_sockfd = accept(sockfd,(struct sockaddr *)&client_addr,&client_len);
+    if(client_sockfd == -1){
+      perror("accept");
+      continue;
     }
-    else
-    {
-        return false;
-    }
-}
+    //成功建立连接，与客户端进行通信
+    //发送协议版本号给客户端
+    send(client_sockfd, PROTOCOL_VERSION,strlen(PROTOCOL_VERSION),0);
 
-int main(int argc, char *argv[]) 
-{
-    // Check if command-line argument is provided
-    if (argc != 2) 
-	{
-        fprintf(stderr, "Usage: %s <ip>:<port>\n", argv[0]);
-        exit(1);
-    }
-   
-    // silpt
-    char *Desthost = NULL;
-    char *Destport = NULL;
-    char* last_colon = strrchr(argv[1], ':');
-
-    if (last_colon != nullptr) 
-    {
-        *last_colon = '\0'; // 将冒号替换为字符串结束符，从而分割字符串.
-        Desthost = new char[strlen(argv[1]) + 1];
-        strcpy(Desthost, argv[1]);
-        Destport = new char[strlen(last_colon + 1) + 1];
-        strcpy(Destport, last_colon + 1);
-        // Desthost = argv[1];
-        // Destport = last_colon + 1;
-
+    //检查客户端数量是否已经达到上限
+    if(++connectedClients > MAX_CLIENTS){
+      printf("Already reach the max number of clients.Rejecting new connections.\n");
+      send(client_sockfd, "Connection rejected: Server is full\n", strlen("Connection rejected: Server is full\n"), 0);
+      close(client_sockfd);
+      connectedClients--;
+      //continue;
+    }else{
+      //没有超过最大连接数
+      printf("Accept. Now connection num: %d\n",connectedClients);
     }
 
-    // ipv4 or ipv6 or domain
-    char* temp = new char[strlen(Desthost) + 1]; // 创建Host字符串的拷贝
-    strcpy(temp, Desthost);
-    bool isIPv6_flag = false;
-    if (isIPv6(temp)) 
-    {
-        isIPv6_flag = true;
-        // std::cout << "IPv6 address detected." << std::endl;
+
+
+    //接收客户端的响应
+    char client_response_1[100];
+    //超时检测
+    fd_set rfds;
+    struct timeval tv;
+    int retval;
+
+    //记录输入时间
+    FD_ZERO(&rfds);
+    FD_SET(client_sockfd,&rfds);
+
+    //设置超时时间为5秒
+    tv.tv_sec = 5;
+    tv.tv_usec = 0;
+
+    //等待客户端响应
+    retval = select(client_sockfd + 1,&rfds,NULL,NULL,&tv);
+    printf("retval: %d\n",retval);
+    if(retval == -1){
+      perror("select()");
     }
-    else if (isdigit(temp[0])) 
-    {
-        isIPv6_flag = false;
-        // std::cout << "IPv4 address detected." << std::endl;
-    } 
-    else 
-    {
-        isIPv6_flag = false;
-        // std::cout << "Domain" << std::endl;
+    else if(retval){
+      //客户端有数据可读
+      recv(client_sockfd,client_response_1,sizeof(client_response_1),0);
+      printf("ClientResponse1:%s\n",client_response_1);
+    
+    }else{
+      //超时
+      printf("Timeout\n");
+      send(client_sockfd,"ERROR TO\n",strlen("ERROR TO\n"),0);
+      close(client_sockfd);
+      connectedClients--;
     }
+
+    if(strcmp(client_response_1,"OK\n")==0){
+      //收到客户端传来的OK\n
+    
+      //使用随机的运算类型和操作数生成随机分配
+      char *operation = randomType();
+      int value1 = randomInt();
+      int value2 = randomInt();
+      char assignment[100];
+      sprintf(assignment,"%s %d %d\n",operation,value1,value2);
+      printf("Assignment: %s\n",assignment);
+
+
+      //发送随机分配给客户端
+      send(client_sockfd,assignment,strlen(assignment),0);
+      //接收客户端的答案
+      char client_response[100];
+    
+      //超时检测
+      fd_set rfds2;
+      struct timeval tv2;
+      int retval2;
+
+      //记录输入时间
+      FD_ZERO(&rfds2);
+      FD_SET(client_sockfd,&rfds2);
+
+      //设置超时时间为5秒
+      tv2.tv_sec = 5;
+      tv2.tv_usec = 0;
+
+      //等待客户端响应
+      retval2 = select(client_sockfd + 1,&rfds2,NULL,NULL,&tv2);
+      printf("retval: %d\n",retval2);
+      if(retval2 == -1){
+        perror("select()");
+      }
+      else if(retval2){
+        //客户端有数据可读
+        recv(client_sockfd,client_response,sizeof(client_response),0);
+  
+    
+      }else{
+        //超时
+        printf("Timeout\n");
+        send(client_sockfd,"ERROR TO\n",strlen("ERROR TO\n"),0);
+        close(client_sockfd);
+        connectedClients--;
+      }
+
+
+
+
+    printf("client_respoonse2:%s \n",client_response);
+    //检查客户端的答案是否正确
+    int result;
+    char *ptr;
+    int server_result = 0;
+    //strncmp：用于比较两个字符串的前n个字符是否相等
+    if(strncmp(operation,"add",3)==0){
+      server_result = value1 + value2;
+    }else if(strncmp(operation,"sub",3)==0){
+      server_result = value1-value2;
+    }else if(strncmp(operation,"mul",3)==0){
+      server_result = value1 * value2;
+    }else if(strncmp(operation,"div",3)==0){
+      server_result = value1 / value2;
+    }else if(strncmp(operation,"fadd",4)==0){
+      server_result = value1+value2;
+    }else if(strncmp(operation,"fsub",4)==0){
+      server_result = value1-value2;
+    }else if(strncmp(operation,"fmul",4)==0){
+      server_result = value1*value2;
+    }else if(strncmp(operation,"fdiv",4)==0){
+      server_result = value1/value2;
+    }
+    //将客户端答案转换成整数
+    result=strtol(client_response,&ptr,10);
+    //printf("Client result: %d \n",result);
+    //printf("Server result: %d \n",server_result);
+
+    //检查客户端答案是否和服务器端答案一致
+    float difference=abs(server_result-result);
+    if(difference<0.0001){
+      printf("OK.\n");
+    }else{
+      printf("Wrong.\n");
+    }
+       //关闭客户端套接字
+    close(client_sockfd);
+    connectedClients--;
     
 
-        
-//     if(isdigit(Desthost[0]) == false)
-//     {
-//         Desthost=domain_to_ipv4(Desthost);
-//     }
-
-
-    if (Desthost == NULL || Destport == NULL) 
-	{
-        fprintf(stderr, "Invalid IP:Port format\n");
-        exit(1);
+    }else{
+             
+    //关闭客户端套接字
+    close(client_sockfd);
+    connectedClients--;
     }
-
-
-#ifdef DEBUG  
-    // Convert port to integer
-    // int port = atoi(Destport);
-    // printf("Host %s, and port %d.\n",Desthost,port);
-#endif
-    printf("server on %s:%s \n",Desthost,Destport);
-    int port = atoi(Destport);
-    // Setup random seed
-    // srand(time(NULL));
-
-    // Setup signal handler
-    // struct sigaction sa;
-    // sa.sa_handler = sigchld_handler;
-    // sigemptyset(&sa.sa_mask);
-    // sa.sa_flags = SA_RESTART;
-    // if (sigaction(SIGCHLD, &sa, NULL) == -1) 
-	// {
-    //     perror("sigaction");
-    //     exit(1);
-    // }
     
-    int rv;
-    int yes=1;
-    int sockfd;
     
-    // Set up hints for getaddrinfo
-    struct addrinfo hints, *servinfo, *p;
-    memset(&hints, 0, sizeof hints);
-    hints.ai_family = AF_UNSPEC;
-    hints.ai_socktype = SOCK_STREAM;
-    hints.ai_flags = AI_PASSIVE;
-    
-    if(isIPv6_flag)
-    {
-        sockfd = socket(AF_INET6, SOCK_STREAM, 0);
-        struct sockaddr_in6 server_addr; // 使用IPv6的地址结构体
-        memset(&server_addr, 0, sizeof(server_addr)); // 初始化为0
-        server_addr.sin6_family = AF_INET6; // 设置地址族为IPv6
-        server_addr.sin6_port = htons(port); // 设置端口号
-        inet_pton(AF_INET6, Desthost, &server_addr.sin6_addr);
-        bind(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr));
-    }
-    else
-    {
-        // Get address information
-        if ((rv = getaddrinfo(Desthost, Destport, &hints, &servinfo)) != 0) 
-        {
-
-            fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
-            return 1;
-        }
-
-        // Loop through all the results and bind to the first we can
-        for (p = servinfo; p != NULL; p = p->ai_next) 
-        {
-            if ((sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) 
-            {
-                perror("server: socket");
-                continue;
-            }
-
-            if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) == -1) 
-            {
-                perror("setsockopt");
-                exit(1);
-            }
-
-            if (bind(sockfd, p->ai_addr, p->ai_addrlen) == -1) 
-            {
-                close(sockfd);
-                perror("server: bind");
-                continue;
-            }
-
-            break;
-        }
-
-        freeaddrinfo(servinfo);
-
-        if (p == NULL) 
-        {
-            fprintf(stderr, "server: failed to bind\n");
-            exit(1);
-        }
-    }
+  }
+  //freeaddrinfo(serverinfo); // 释放地址信息链表
+  //关闭服务器套接字
+  close(sockfd);
+  return 0;
 
 
-    if (listen(sockfd, BACKLOG) == -1) 
-	{
-        perror("listen");  
-        exit(1);
-    }
-
-    printf("server: waiting for connections...\n");
-
-//-----------------------------
-
-    int num = 0;
-
-    while(1)
-    {
-        int cfd;
-        if(num<MAXCLIENTS)
-        {
-            // client connection
-            // struct sockaddr_storage their_addr; // connector's address information
-            // socklen_t sin_size;
-            // int cfd = accept(sockfd,(struct sockaddr *)&their_addr, &sin_size);
-            cfd = accept(sockfd,NULL,NULL);
-            if(cfd==-1)
-            {
-                // printf("sockfd: %d\n",sockfd);
-                perror("accept");
-                continue;
-            }
-            
-            num++;
-
-            // 打印连接信息
-            // char s[INET6_ADDRSTRLEN];
-            // inet_ntop(their_addr.ss_family, get_in_addr((struct sockaddr *)&their_addr), s, sizeof s);
-            // printf("server: got connection from %s\n", s);
-            printf("server: got connection %d\n", num);
-
-            // FD_SET(cfd, &redset);
-            // // 更新最大值
-            // maxfd = cfd > maxfd ? cfd : maxfd;
-
-            // printf("maxfd:%d \n",maxfd);
-            // printf("sockfd: %d,cfd: %d \n",sockfd,cfd);
-
-            // Send supported protocol to client
-            std::string protocolMessage = "TEXT TCP 1.0\n";
-            // if (write(i, protocolMessage.c_str(), protocolMessage.length()) == -1) 
-            if (send(cfd, protocolMessage.c_str(), protocolMessage.length(), 0) == -1) 
-            {
-                // printf("protocol\n");
-                perror("send");
-                close(cfd);
-                continue;
-            }
-        }
-        else
-        {
-            // client connection
-            struct sockaddr_storage their_addr; // connector's address information
-            socklen_t sin_size;
-            int cfd = accept(sockfd,(struct sockaddr *)&their_addr, &sin_size);
-
-            std::string protocolMessage = "Reject, out of queue\n";
-            if (send(cfd, protocolMessage.c_str(), protocolMessage.length(), 0) == -1) 
-            {
-                perror("send");
-                close(cfd);
-                continue;
-            }
-
-            close(cfd);
-        }
-        // time out
-        struct timeval timeout;
-        timeout.tv_sec = WAIT_TIME_SEC;
-        timeout.tv_usec = 0;
-        
-        //select
-        fd_set redset;
-        FD_ZERO(&redset);
-        FD_SET(cfd, &redset);
-        int maxfd = cfd;
-        // fd_set tmp = redset;
-        int ret = select(maxfd+1,&redset,NULL,NULL,&timeout);
-        
-        //
-        char buf[5]={0};
-        if(ret == -1)
-        {
-            perror("select()");
-        }
-        else if(ret)
-        {
-            int len = recv(cfd, buf, sizeof(buf), 0);
-            if (len == -1) 
-            {
-                if (errno == EWOULDBLOCK || errno == EAGAIN) 
-                {
-                    // Timeout occurred
-                    printf("server: protocol reply timeout occurred, closing connection\n");
-                } 
-                else 
-                {
-                    perror("recv");
-                }
-                FD_CLR(cfd, &redset);
-                close(cfd);
-                num--;
-            }
-            else if(len == 0)
-            {
-                printf("client closed connection...\n");
-                FD_CLR(cfd, &redset);
-                close(cfd);
-                num--;
-            }          
-        }
-        else
-        {
-            printf("server: protocol reply timeout occurred, closing connection\n");
-            FD_CLR(cfd, &redset);
-            close(cfd);
-            num--;
-        }
-
-        char buf_pre3[4];
-        for (int i = 0; i < 3; ++i) 
-        {
-            buf_pre3[i] = buf[i];
-        }
-        buf_pre3[3] = '\0'; // end
-        
-        // Check if client accepted the protocol
-        if (strcmp(buf_pre3, "OK\n") != 0) 
-        {
-            printf("Client can not accept this protocol.\nDisconnecting.\n");
-            FD_CLR(cfd, &redset);
-            close(cfd);
-            num--;
-            continue;
-        }
-        
-        // 清空缓存区,理论上没有用
-        memset(buf, 0, sizeof(buf));
-
-
-        fd_set redset_calculator;
-        FD_ZERO(&redset_calculator);
-        FD_SET(cfd,&redset_calculator);
-
-        struct timeval timeout_calculator;
-        timeout_calculator.tv_sec = WAIT_TIME_SEC;
-        timeout_calculator.tv_usec = 0;
-            
-        // Initialize the library, this is needed for this library. 
-        char *ptr;
-        ptr=randomType(); // Get a random arithemtic operator. 
-        double f1,f2;
-        int i1,i2;
-        i1=randomInt();
-        i2=randomInt();
-        f1=randomFloat();
-        f2=randomFloat();
-
-        // Generate random number
-        char* operation = generateRandom(ptr,f1,f2,i1,i2);
-        if (operation == NULL) 
-        {
-            return -1;
-        }
-        char *formula = strtok(operation, "=");
-        char *result = strtok(NULL, "=");
-        char *result_copy = strdup(result);
-        if (result_copy == NULL) 
-        {
-            return -1;
-        }
-
-        // Send formula to client
-        int tmpLength = strlen(formula);
-        formula[tmpLength] = '\n';
-        formula[tmpLength + 1] = '\0'; // 添加 null 终止符
-        if (send(cfd, formula, strlen(formula), 0) == -1) 
-        {
-            perror("send");
-            close(cfd);
-            continue;
-        }
-        printf("server: send %s",formula);
-
-        char respondResultString[1024];
-        memset(respondResultString, 0, sizeof(respondResultString));
-
-        int checkReceived = select(maxfd + 1,&redset_calculator,NULL,NULL,&timeout_calculator);
-        if (checkReceived == -1)
-        {
-            perror("select()");
-        }
-        else if(checkReceived)
-        {
-            int bytesReceived = recv(cfd, respondResultString, sizeof(respondResultString), 0);
-            if (bytesReceived == -1) 
-            {
-                if (errno == EWOULDBLOCK || errno == EAGAIN) 
-                {
-                    // Timeout occurred
-                    printf("server: result reply timeout occurred, closing connection\n");
-                    // close(i);
-                } 
-                else 
-                {
-                    perror("recv");
-                }
-                FD_CLR(cfd, &redset_calculator);
-                num--;
-                close(cfd);
-                continue;;
-            } 
-            else if (bytesReceived == 0) 
-            {
-                // Connection closed by the client
-                FD_CLR(cfd, &redset_calculator);
-                close(cfd);
-                continue;
-            }
-
-            printf("server: receive respond: %s",respondResultString);
-            printf("server: correct result:%s",result_copy);
-
-            bool checkflag = NULL;     
-            if(ptr[0]=='f')
-            {
-                checkflag = checkDoubleRandom(respondResultString,result_copy);
-                
-            } 
-            else
-            {
-                checkflag = checkIntRandom(respondResultString,result_copy);
-            }
-
-            free(result_copy);    
-
-            if(checkflag)
-            {
-                printf("server: OK\n");
-            }
-            else
-            {
-                printf("server: ERROR\n");
-                
-            }
-
-            // 顺手关掉
-            close(cfd);
-            // FD_CLR(cfd, &redset_calculator);
-            num--;
-        }
-        else
-        {
-            printf("server: result reply timeout occurred, closing connection\n");
-            // FD_CLR(cfd, &redset_calculator);
-            num--;
-            close(cfd);
-            continue;
-        }
-        
-
-        
-        /*
-        for(int i=0;i<=maxfd;++i)
-        {
-            if(i!=sockfd && FD_ISSET(i, &tmp))
-            {
-                struct timeval timeout_calculator;
-                timeout_calculator.tv_sec = WAIT_TIME_SEC;
-                timeout_calculator.tv_usec = 0;
-                if (setsockopt(i, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout_calculator, sizeof(timeout_calculator)) < 0) 
-                {
-                    perror("setsockopt");
-                    FD_CLR(i, &redset);
-                    close(i);
-                    num--;
-                    continue;
-                }
-                    
-                // Initialize the library, this is needed for this library. 
-                char *ptr;
-                ptr=randomType(); // Get a random arithemtic operator. 
-                double f1,f2;
-                int i1,i2;
-                i1=randomInt();
-                i2=randomInt();
-                f1=randomFloat();
-                f2=randomFloat();
-
-                // Generate random number
-                char* operation = generateRandom(ptr,f1,f2,i1,i2);
-                if (operation == NULL) 
-                {
-                    return -1;
-                }
-                char *formula = strtok(operation, "=");
-                char *result = strtok(NULL, "=");
-                char *result_copy = strdup(result);
-                if (result_copy == NULL) 
-                {
-                    return -1;
-                }
-
-                // Send formula to client
-                int tmpLength = strlen(formula);
-                formula[tmpLength] = '\n';
-                formula[tmpLength + 1] = '\0'; // 添加 null 终止符
-                if (send(i, formula, strlen(formula), 0) == -1) 
-                {
-                    perror("send");
-                    close(i);
-                    continue;
-                }
-                printf("server: send %s",formula);
-
-                char respondResultString[1024];
-                memset(respondResultString, 0, sizeof(respondResultString));
-                // if (recv(i, respondResultString, sizeof(respondResultString), 0) == -1) 
-                // {
-                //     perror("recv");
-                //     close(i);
-                //     continue;
-                // }
-
-                int bytesReceived = recv(i, respondResultString, sizeof(respondResultString), 0);
-                if (bytesReceived == -1) 
-                {
-                    if (errno == EWOULDBLOCK || errno == EAGAIN) 
-                    {
-                        // Timeout occurred
-                        printf("server: result reply timeout occurred, closing connection\n");
-                        // close(i);
-                    } 
-                    else 
-                    {
-                        perror("recv");
-                    }
-                    FD_CLR(i, &redset);
-                    num--;
-                    close(i);
-                    break;
-                } 
-                else if (bytesReceived == 0) 
-                {
-                    // Connection closed by the client
-                    FD_CLR(i, &redset);
-                    close(i);
-                    // continue;
-                    break;
-                }
-
-                printf("server: receive respond: %s",respondResultString);
-                printf("server: correct result:%s",result_copy);
-
-                bool checkflag = NULL;     
-                if(ptr[0]=='f')
-                {
-                    checkflag = checkDoubleRandom(respondResultString,result_copy);
-                    
-                } 
-                else
-                {
-                    checkflag = checkIntRandom(respondResultString,result_copy);
-                }
-
-                free(result_copy);    
-
-                if(checkflag)
-                {
-                    printf("server: OK\n");
-                }
-                else
-                {
-                    printf("server: ERROR\n");
-                    
-                }
-
-                // 顺手关掉
-                close(i);
-                FD_CLR(i, &redset);
-                num--;
-            }
-        }
-        */
-    }
-//-----------------------------
-
-    close(sockfd);
-
-    return 0;
 }
