@@ -23,7 +23,7 @@
 #define MAXCLIENTS 5
 #define SECRETSTRING "konijiwa00"
 
-#define WAIT_TIME_SEC 10005
+#define WAIT_TIME_SEC 5
 #define WAIT_TIME_USEC 0
 #define MAXRCVTIME 5
 #define DEBUG
@@ -364,6 +364,8 @@ int main(int argc, char *argv[])
 
     while(1)
     {
+        fd_set tmp = redset;
+        // select(maxfd+1,&tmp,NULL,NULL,NULL);
         
         if(num<MAXCLIENTS)
         {
@@ -371,6 +373,12 @@ int main(int argc, char *argv[])
             // struct sockaddr_storage their_addr; // connector's address information
             // socklen_t sin_size;
             // int cfd = accept(sockfd,(struct sockaddr *)&their_addr, &sin_size);
+
+            // struct timeval timeout;
+            // timeout.tv_sec = 1;  // 设置超时时间为 1 秒
+            // timeout.tv_usec = 0;
+            // setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+
             int cfd = accept(sockfd,NULL,NULL);
             if(cfd==-1)
             {
@@ -419,8 +427,9 @@ int main(int argc, char *argv[])
                 close(cfd);
                 continue;
             }
-
+            // FD_CLR(cfd, &redset);
             close(cfd);
+            // continue;
         }
         // time out
         struct timeval timeout;
@@ -428,7 +437,7 @@ int main(int argc, char *argv[])
         timeout.tv_usec = 0;
         
         //select
-        fd_set tmp = redset;
+        // fd_set tmp = redset;
         int ret = select(maxfd+1,&tmp,NULL,NULL,&timeout);
         
         //
