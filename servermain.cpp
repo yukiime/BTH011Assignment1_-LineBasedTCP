@@ -354,24 +354,20 @@ int main(int argc, char *argv[])
     printf("server: waiting for connections...\n");
 
 //-----------------------------
-    fd_set redset;
-    FD_ZERO(&redset);
-    FD_SET(sockfd, &redset);
-    int maxfd = sockfd;
 
     int num = 0;
 
 
     while(1)
     {
-        
+        int cfd;
         if(num<MAXCLIENTS)
         {
             // client connection
             // struct sockaddr_storage their_addr; // connector's address information
             // socklen_t sin_size;
             // int cfd = accept(sockfd,(struct sockaddr *)&their_addr, &sin_size);
-            int cfd = accept(sockfd,NULL,NULL);
+            cfd = accept(sockfd,NULL,NULL);
             if(cfd==-1)
             {
                 // printf("sockfd: %d\n",sockfd);
@@ -428,6 +424,10 @@ int main(int argc, char *argv[])
         timeout.tv_usec = 0;
         
         //select
+        fd_set redset;
+        FD_ZERO(&redset);
+        FD_SET(cfd, &redset);
+        int maxfd = cfd;
         fd_set tmp = redset;
         int ret = select(maxfd+1,&tmp,NULL,NULL,&timeout);
         
