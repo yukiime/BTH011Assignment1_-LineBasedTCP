@@ -182,6 +182,9 @@ int main(int argc, char *argv[]){
   //Recieve message from server
   recieveMessage(socket_desc, server_message, sizeof(server_message));
   
+
+	sleep(150);
+
   //Compare strings to verify version
 
   if(strcmp(server_message,"TEXT TCP 1.0\n\n") == 0){
@@ -199,7 +202,8 @@ int main(int argc, char *argv[]){
 	  return -1;
   }
 
-	sleep(15);
+	// sleep(150);
+
   //Recieve the problem
   printf("We are here\n");
   recieveMessage(socket_desc, server_message, sizeof(server_message));

@@ -384,6 +384,8 @@ int main(int argc, char *argv[])
         //     continue;
         // }
 
+        // printf("ret=%d,num=%d\n",ret,num);
+
         // 判断是否listen
         if(FD_ISSET(sockfd,&tmp))
         {
@@ -446,6 +448,7 @@ int main(int argc, char *argv[])
                 int cfd = accept(sockfd,(struct sockaddr *)&their_addr, &sin_size);
 
                 std::string protocolMessage = "Reject, out of queue\n";
+                printf("Reject a client,cfd:%d\n", cfd);
                 if (send(cfd, protocolMessage.c_str(), protocolMessage.length(), 0) == -1) 
                 {
                     perror("send");
