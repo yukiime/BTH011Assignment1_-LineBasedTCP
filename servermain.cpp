@@ -26,7 +26,7 @@
 #define WAIT_TIME_USEC 0
 
 #define MAXCLIENTS 2
-#define MAXRCVTIME 500
+#define MAXRCVTIME 5
 #define DEBUG
 
 

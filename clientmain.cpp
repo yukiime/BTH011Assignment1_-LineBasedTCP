@@ -181,9 +181,8 @@ int main(int argc, char *argv[]){
   
   //Recieve message from server
   recieveMessage(socket_desc, server_message, sizeof(server_message));
-  
-
-	sleep(150);
+  	
+	// sleep(150);
 
   //Compare strings to verify version
 
